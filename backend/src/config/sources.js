@@ -97,6 +97,33 @@ export const RSS_SOURCES = [
   { name: "LA Times",        url: "https://www.latimes.com/rss2.0.xml",               category: "local",   credibility: 9,  region: "us-west" },
   { name: "NY Times Local",  url: "https://rss.nytimes.com/services/xml/rss/nyt/NYRegion.xml", category: "local", credibility: 10, region: "us-east" },
   { name: "Chicago Tribune", url: "https://www.chicagotribune.com/arcio/rss/",        category: "local",   credibility: 8,  region: "us-midwest" },
+
+  // ─── TECH ─────────────────────────────────────────────────────────
+  { name: "The Verge",       url: "https://www.theverge.com/rss/index.xml",           category: "tech",    credibility: 9,  region: "global" },
+  { name: "Engadget",        url: "https://www.engadget.com/rss.xml",                 category: "tech",    credibility: 8,  region: "global" },
+  { name: "CNET",            url: "https://www.cnet.com/rss/news/",                   category: "tech",    credibility: 8,  region: "global" },
+  { name: "Gizmodo",         url: "https://gizmodo.com/rss",                          category: "tech",    credibility: 7,  region: "global" },
+  { name: "MacRumors",       url: "https://feeds.macrumors.com/MacRumors-All",        category: "tech",    credibility: 8,  region: "global" },
+  { name: "9to5Mac",         url: "https://9to5mac.com/feed/",                        category: "tech",    credibility: 8,  region: "global" },
+  { name: "Bloomberg Tech",  url: "https://feeds.bloomberg.com/technology/news.rss",  category: "tech",    credibility: 10, region: "global" },
+
+  // ─── BUSINESS ─────────────────────────────────────────────────────
+  { name: "Reuters Business",url: "https://feeds.reuters.com/reuters/businessNews",   category: "business", credibility: 10, region: "global" },
+  { name: "BBC Business",    url: "https://feeds.bbci.co.uk/news/business/rss.xml",   category: "business", credibility: 10, region: "global" },
+  { name: "CNBC",            url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", category: "business", credibility: 9, region: "us" },
+  { name: "Forbes",          url: "https://www.forbes.com/business/feed/",            category: "business", credibility: 8,  region: "global" },
+  { name: "Bloomberg Markets",url: "https://feeds.bloomberg.com/markets/news.rss",    category: "business", credibility: 10, region: "global" },
+  { name: "Financial Times",  url: "https://www.ft.com/?format=rss",                 category: "business", credibility: 10, region: "global" },
+  { name: "Fortune",         url: "https://fortune.com/feed/",                       category: "business", credibility: 8,  region: "global" },
+  { name: "Fast Company",    url: "https://www.fastcompany.com/latest/rss",           category: "business", credibility: 8,  region: "global" },
+
+  // ─── PUBLICATIONS / MAGAZINES ─────────────────────────────────────
+  { name: "The Economist",      url: "https://www.economist.com/the-world-this-week/rss.xml", category: "publications", credibility: 10, region: "global" },
+  { name: "Foreign Affairs",    url: "https://www.foreignaffairs.com/rss.xml",        category: "publications", credibility: 10, region: "global" },
+  { name: "The Atlantic",       url: "https://www.theatlantic.com/feed/all/",         category: "publications", credibility: 9,  region: "global" },
+  { name: "Smithsonian",        url: "https://www.smithsonianmag.com/rss/latest_articles/", category: "publications", credibility: 9, region: "global" },
+  { name: "NY Times",           url: "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml", category: "publications", credibility: 10, region: "us" },
+  { name: "The New Yorker",     url: "https://www.newyorker.com/feed/everything",     category: "publications", credibility: 10, region: "global" },
 ];
 
 // ─── YouTube Channel Sources ──────────────────────────────────────────────
@@ -156,6 +183,20 @@ export const YOUTUBE_SOURCES = [
 
   // Weather
   { name: "The Weather Channel",channelId: "UCEKpDkCIExCLXlKH7jRQTxw", category: "weather",        region: "us"     },
+
+  // Tech
+  { name: "Marques Brownlee (MKBHD)", channelId: "UCBJycsmduvYEL83R_U4JriQ", category: "tech",    region: "global" },
+  { name: "Linus Tech Tips",  channelId: "UCXuqSBlHAE6Xw-yeJA0Tunw", category: "tech",            region: "global" },
+  { name: "Unbox Therapy",    channelId: "UCsTcErHg8oDvUnTzoqsYeNw", category: "tech",            region: "global" },
+  { name: "The Verge",        channelId: "UCddiUEpeqJcYeBxX1IVBKvQ", category: "tech",            region: "global" },
+  { name: "Dave2D",           channelId: "UCVYamHliCI9rw1tHR1xbkfw", category: "tech",            region: "global" },
+  { name: "CNET",             channelId: "UCOmcA3f_RrH6b9NmcNa4tdg", category: "tech",            region: "global" },
+
+  // Business / Finance
+  { name: "Bloomberg Originals",channelId: "UChLynHKFOBCPHb8JMmQZiXA", category: "business",     region: "global" },
+  { name: "CNBC",             channelId: "UCrp_UI8XB08h07wjgHnKqWA", category: "business",        region: "us"     },
+  { name: "Yahoo Finance",    channelId: "UCEAZeUIeJs0IjQiqTCdVSIg", category: "business",        region: "global" },
+  { name: "Graham Stephan",   channelId: "UCV6KDgJskWaEckne5aPA0aQ", category: "business",        region: "us"     },
 ];
 
 // ─── X (Twitter) Curated Accounts by Topic ───────────────────────────────
@@ -257,6 +298,30 @@ export const X_ACCOUNTS = {
     { handle: "nytimes",        name: "NY Times",         desc: "New York news",            verified: true  },
     { handle: "chicagotribune", name: "Chicago Tribune",  desc: "Chicago news",             verified: true  },
   ],
+  tech: [
+    { handle: "verge",          name: "The Verge",        desc: "Tech, science & culture",  verified: true  },
+    { handle: "MKBHD",          name: "Marques Brownlee", desc: "Tech reviewer & creator",  verified: true  },
+    { handle: "engadget",       name: "Engadget",         desc: "Consumer electronics",     verified: true  },
+    { handle: "cnet",           name: "CNET",             desc: "Tech product reviews",     verified: true  },
+    { handle: "Gizmodo",        name: "Gizmodo",          desc: "Tech news & gadgets",      verified: false },
+    { handle: "MacRumors",      name: "MacRumors",        desc: "Apple news & rumors",      verified: false },
+  ],
+  business: [
+    { handle: "business",       name: "Reuters Business", desc: "Global business news",     verified: true  },
+    { handle: "BBCBusiness",    name: "BBC Business",     desc: "Business & economy",       verified: true  },
+    { handle: "CNBC",           name: "CNBC",             desc: "Financial news network",   verified: true  },
+    { handle: "Forbes",         name: "Forbes",           desc: "Business & entrepreneurship", verified: true },
+    { handle: "FT",             name: "Financial Times",  desc: "Global business news",     verified: true  },
+    { handle: "brecorder",      name: "Business Recorder",desc: "Pakistan business news",   verified: false },
+  ],
+  publications: [
+    { handle: "TheEconomist",   name: "The Economist",    desc: "Weekly global analysis",   verified: true  },
+    { handle: "ForeignAffairs", name: "Foreign Affairs",  desc: "International relations",  verified: true  },
+    { handle: "TheAtlantic",    name: "The Atlantic",     desc: "Ideas, politics & culture",verified: true  },
+    { handle: "smithsonianmag", name: "Smithsonian",      desc: "Arts, science & history",  verified: true  },
+    { handle: "nytimes",        name: "NY Times",         desc: "All the news fit to print",verified: true  },
+    { handle: "NewYorker",      name: "The New Yorker",   desc: "Long-form journalism",     verified: true  },
+  ],
 };
 
 // ─── Topic Definitions ────────────────────────────────────────────────────
@@ -265,6 +330,8 @@ export const TOPICS = [
   { id: "politics",       label: "Politics",       emoji: "🏛️", color: "#007AFF" },
   { id: "international",  label: "International",  emoji: "🌍", color: "#5856D6" },
   { id: "pakistan",       label: "Pakistan",       emoji: "🇵🇰", color: "#01411C" },
+  { id: "tech",           label: "Tech",           emoji: "📱", color: "#0EA5E9" },
+  { id: "business",       label: "Business",       emoji: "💼", color: "#F59E0B" },
   { id: "local",          label: "Local",          emoji: "📍", color: "#FF9500" },
   { id: "sports",         label: "Sports",         emoji: "🏆", color: "#34C759" },
   { id: "science",        label: "Science",        emoji: "🔬", color: "#5AC8FA" },
@@ -277,4 +344,5 @@ export const TOPICS = [
   { id: "ai",             label: "AI",             emoji: "🤖", color: "#007AFF" },
   { id: "computer-science",label: "Computer Science", emoji: "💻", color: "#5856D6" },
   { id: "agentic-ai",     label: "Agentic AI",     emoji: "🦾", color: "#FF3B30" },
+  { id: "publications",   label: "Publications",   emoji: "📚", color: "#8B5CF6" },
 ];

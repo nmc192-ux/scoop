@@ -117,11 +117,12 @@ export function upsertArticle(article) {
   `).run(article);
 }
 
-export function getArticles({ category, limit = 50, offset = 0, search = null, minCredibility = 0 }) {
+export function getArticles({ category, limit = 50, offset = 0, search = null, minCredibility = 0, source = null }) {
   const db = getDb();
   let query = `SELECT * FROM articles WHERE credibility >= ?`;
   const params = [minCredibility];
   if (category && category !== "top") { query += ` AND category = ?`; params.push(category); }
+  if (source) { query += ` AND source_name = ?`; params.push(source); }
   if (search) { query += ` AND (title LIKE ? OR description LIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
   query += ` ORDER BY published_at DESC LIMIT ? OFFSET ?`;
   params.push(limit, offset);

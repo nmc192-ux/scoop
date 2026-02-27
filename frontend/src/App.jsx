@@ -7,6 +7,8 @@ import NewsGrid from "./components/news/NewsGrid";
 import StatsBar from "./components/news/StatsBar";
 import VideoSection from "./components/news/VideoSection";
 import XFeedSection from "./components/news/XFeedSection";
+import MarketStrip from "./components/news/MarketStrip";
+import MagazineSection from "./components/news/MagazineSection";
 import { LoadingHero } from "./components/ui/LoadingCard";
 import { BackendOffline } from "./components/ui/EmptyState";
 import { useNews, useFeatured, useHealth, useRefresh } from "./hooks/useNews";
@@ -46,6 +48,9 @@ export default function App() {
         {/* Stats bar */}
         <StatsBar />
 
+        {/* ── Market Data Strip ──────────────────────────────────────── */}
+        <MarketStrip />
+
         {/* ── Hero / Featured (Top Stories) ─────────────────────────── */}
         <AnimatePresence mode="wait">
           {showFeatured && (
@@ -78,6 +83,9 @@ export default function App() {
 
         {/* ── Video Section ─────────────────────────────────────────── */}
         <VideoSection />
+
+        {/* ── Curated Reads / Publications ──────────────────────────── */}
+        <MagazineSection />
 
         {/* ── X (Twitter) Accounts ──────────────────────────────────── */}
         <XFeedSection />

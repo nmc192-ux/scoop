@@ -11,6 +11,7 @@ import { startScheduler, getSchedulerStatus } from "./src/services/scheduler.js"
 import newsRouter      from "./src/routes/news.js";
 import videosRouter    from "./src/routes/videos.js";
 import translateRouter from "./src/routes/translate.js";
+import marketRouter    from "./src/routes/market.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
 import { getDb } from "./src/models/database.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
@@ -50,6 +51,7 @@ app.use((req, res, next) => {
 app.use("/api/news",      cacheMiddleware("medium"), newsRouter);
 app.use("/api/videos",   cacheMiddleware("short"),  videosRouter);
 app.use("/api/translate", translateRouter);
+app.use("/api/market",   marketRouter); // live FX, stocks, metals — has its own 15-min cache
 
 // Health
 app.get("/api/health", (req, res) => {

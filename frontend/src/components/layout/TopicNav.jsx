@@ -8,6 +8,9 @@ const TOPIC_COLORS = {
   top: "#FF3B30",
   politics: "#007AFF",
   international: "#5856D6",
+  pakistan: "#01411C",
+  tech: "#0EA5E9",
+  business: "#F59E0B",
   local: "#FF9500",
   sports: "#34C759",
   science: "#5AC8FA",
@@ -20,6 +23,7 @@ const TOPIC_COLORS = {
   ai: "#007AFF",
   "computer-science": "#5856D6",
   "agentic-ai": "#FF3B30",
+  publications: "#8B5CF6",
 };
 
 export default function TopicNav() {

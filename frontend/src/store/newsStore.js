@@ -57,6 +57,14 @@ export const useNewsStore = create(
       videoTab: "all",   // "all" | "shorts" | "tiktok" | "facebook"
       setVideoTab: (tab) => set({ videoTab: tab }),
 
+      // ─── Followed YouTube Channels ─────────────────────────────────
+      followedChannels: [],
+      toggleFollowChannel: (name) => {
+        const c = get().followedChannels;
+        set({ followedChannels: c.includes(name) ? c.filter(x => x !== name) : [...c, name] });
+      },
+      isChannelFollowed: (name) => get().followedChannels.includes(name),
+
       // ─── Refresh ───────────────────────────────────────────────────
       lastRefreshed: null,
       setLastRefreshed: (time) => set({ lastRefreshed: time }),
@@ -64,11 +72,12 @@ export const useNewsStore = create(
     {
       name: "khabari-store",
       partialize: (state) => ({
-        darkMode:      state.darkMode,
-        language:      state.language,
-        activeTopics:  state.activeTopics,
-        savedArticles: state.savedArticles,
-        viewMode:      state.viewMode,
+        darkMode:         state.darkMode,
+        language:         state.language,
+        activeTopics:     state.activeTopics,
+        savedArticles:    state.savedArticles,
+        viewMode:         state.viewMode,
+        followedChannels: state.followedChannels,
       }),
     }
   )

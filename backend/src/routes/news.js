@@ -29,6 +29,7 @@ router.get("/", (req, res) => {
       offset = 0,
       search = null,
       minCredibility = 0,
+      source = null,
     } = req.query;
 
     const articles = getArticles({
@@ -37,6 +38,7 @@ router.get("/", (req, res) => {
       offset: parseInt(offset),
       search: search || null,
       minCredibility: parseInt(minCredibility),
+      source: source || null,
     });
 
     // Track analytics (privacy-safe, no PII)

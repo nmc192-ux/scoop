@@ -22,6 +22,20 @@ export function useVideos() {
   });
 }
 
+// Fetch all videos regardless of active topic (for channel browser + Shorts)
+export function useAllVideos(limit = 60) {
+  return useQuery({
+    queryKey: ["videos-all", limit],
+    queryFn: async () => {
+      const { data } = await api.get("/videos", { params: { limit } });
+      return data.data || [];
+    },
+    staleTime: 10 * 60 * 1000,
+    refetchInterval: 60 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useVideosByCategories(categories, limit = 12) {
   return useQuery({
     queryKey: ["videos-by-cats", categories, limit],
