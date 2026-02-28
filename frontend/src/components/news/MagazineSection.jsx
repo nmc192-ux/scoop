@@ -70,7 +70,7 @@ const PUBLICATIONS = [
 
 // ─── Article card ────────────────────────────────────────────────────────────
 
-function ArticleCard({ article, accentColor }) {
+function ArticleCard({ article, accentColor, pubEmoji, pubLabel }) {
   const ago = article.published_at
     ? formatDistanceToNow(new Date(article.published_at), { addSuffix: true })
     : "";
@@ -87,7 +87,7 @@ function ArticleCard({ article, accentColor }) {
     >
       {/* Thumbnail */}
       <div className="relative h-32 bg-[var(--color-surface2)] overflow-hidden flex-shrink-0">
-        {article.image_url ? (
+        {article.image_url && (
           <img
             src={article.image_url}
             alt={article.title}
@@ -95,16 +95,26 @@ function ArticleCard({ article, accentColor }) {
             className="w-full h-full object-cover"
             onError={(e) => { e.target.style.display = "none"; }}
           />
-        ) : (
+        )}
+        {/* Branded placeholder — always rendered, hidden behind image when one exists */}
+        {!article.image_url && (
           <div
-            className="w-full h-full flex items-center justify-center"
-            style={{ background: `linear-gradient(135deg, ${accentColor}20, ${accentColor}08)` }}
+            className="w-full h-full flex flex-col items-center justify-center gap-2 px-3"
+            style={{
+              background: `linear-gradient(135deg, ${accentColor}35 0%, ${accentColor}12 60%, transparent 100%)`,
+            }}
           >
-            <BookOpen size={28} style={{ color: accentColor, opacity: 0.5 }} />
+            <span className="text-3xl leading-none">{pubEmoji}</span>
+            <span
+              className="text-[10px] font-bold text-center uppercase tracking-widest leading-tight"
+              style={{ color: accentColor }}
+            >
+              {pubLabel}
+            </span>
           </div>
         )}
         {/* Overlay gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
       </div>
 
       {/* Body */}
@@ -149,7 +159,7 @@ function PublicationRow({ pub }) {
             />
           ))
         : articles.map((a) => (
-            <ArticleCard key={a.id} article={a} accentColor={pub.color} />
+            <ArticleCard key={a.id} article={a} accentColor={pub.color} pubEmoji={pub.emoji} pubLabel={pub.short} />
           ))}
     </div>
   );

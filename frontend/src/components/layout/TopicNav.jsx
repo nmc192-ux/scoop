@@ -44,10 +44,12 @@ export default function TopicNav() {
   return (
     <nav className="sticky top-14 sm:top-16 z-40 glass border-b border-[var(--color-border)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div
-          ref={scrollRef}
-          className="flex items-center gap-2 py-3 overflow-x-auto hide-scrollbar"
-        >
+        {/* Scroll container with fade hint on right edge */}
+        <div className="relative">
+          <div
+            ref={scrollRef}
+            className="flex items-center gap-2 py-3 overflow-x-auto hide-scrollbar"
+          >
           {topics.map((topic) => {
             const isActive = activeTopics.includes(topic.id);
             const color = TOPIC_COLORS[topic.id] || "#007AFF";
@@ -82,6 +84,14 @@ export default function TopicNav() {
               </motion.button>
             );
           })}
+          </div>
+          {/* Right-edge fade — indicates more topics to scroll to */}
+          <div
+            className="pointer-events-none absolute right-0 top-0 h-full w-16"
+            style={{
+              background: "linear-gradient(to right, transparent, var(--color-bg))",
+            }}
+          />
         </div>
 
         {/* Multi-select hint */}
