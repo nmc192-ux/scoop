@@ -212,6 +212,7 @@ export default function VideoSection() {
   const [activeTab,       setActiveTab]       = useState("all");
   const [categoryFilter,  setCategoryFilter]  = useState("all");
   const [selectedChannel, setSelectedChannel] = useState(null);
+  const [isExpanded,      setIsExpanded]      = useState(false);
 
   const isLoading = topicLoading || allLoading;
 
@@ -253,6 +254,7 @@ export default function VideoSection() {
     setActiveTab(id);
     setSelectedChannel(null);
     setCategoryFilter("all");
+    setIsExpanded(false);
   };
 
   return (
@@ -392,17 +394,38 @@ export default function VideoSection() {
             )}
 
             {isLoading ? (
-              <GridSkeleton count={8} />
+              <GridSkeleton count={4} />
             ) : forYouVideos.length === 0 ? (
               <p className="text-center py-10 text-sm text-[var(--color-text-tertiary)]">
                 No videos found — try a different filter
               </p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {forYouVideos.map((video, i) => (
-                  <VideoCard key={video.id} video={video} index={i} onPlay={setActiveVideo} />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {(isExpanded ? forYouVideos : forYouVideos.slice(0, 4)).map((video, i) => (
+                    <VideoCard key={video.id} video={video} index={i} onPlay={setActiveVideo} />
+                  ))}
+                </div>
+
+                {/* Expand / Collapse button */}
+                {forYouVideos.length > 4 && (
+                  <div className="flex justify-center mt-5">
+                    <button
+                      onClick={() => setIsExpanded(v => !v)}
+                      className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold
+                                 bg-[var(--color-surface)] border border-[var(--color-border)]
+                                 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface2)]
+                                 hover:text-[var(--color-text)] transition-all duration-200"
+                    >
+                      {isExpanded ? (
+                        <><ChevronLeft size={14} className="rotate-90" /> Show less</>
+                      ) : (
+                        <><ChevronRight size={14} className="-rotate-90" /> Show all {forYouVideos.length} videos</>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
         )}

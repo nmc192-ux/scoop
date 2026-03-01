@@ -110,8 +110,8 @@ const TABS = [
 ];
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function MarketStrip() {
-  const [isOpen, setIsOpen]   = useState(true);
+export default function MarketStrip({ defaultOpen = true }) {
+  const [isOpen, setIsOpen]   = useState(defaultOpen);
   const [activeTab, setTab]   = useState("forex");
   const { data: market, isLoading, isError, refetch, isFetching } = useMarket();
 

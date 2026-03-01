@@ -9,6 +9,7 @@ import VideoSection from "./components/news/VideoSection";
 import XFeedSection from "./components/news/XFeedSection";
 import MarketStrip from "./components/news/MarketStrip";
 import MagazineSection from "./components/news/MagazineSection";
+import MostReadSidebar from "./components/news/MostReadSidebar";
 import { LoadingHero } from "./components/ui/LoadingCard";
 import { BackendOffline } from "./components/ui/EmptyState";
 import { useNews, useFeatured, useHealth, useRefresh } from "./hooks/useNews";
@@ -45,13 +46,16 @@ export default function App() {
       <TopicNav />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* Stats bar */}
+
+        {/* ── Stats bar ──────────────────────────────────────────────── */}
         <StatsBar />
 
-        {/* ── Market Data Strip ──────────────────────────────────────── */}
-        <MarketStrip />
+        {/* ── Mobile-only: Markets at top (collapsed) ─────────────── */}
+        <div className="lg:hidden">
+          <MarketStrip defaultOpen={false} />
+        </div>
 
-        {/* ── Hero / Featured (Top Stories) ─────────────────────────── */}
+        {/* ── Hero / Featured (Top Stories only) ─────────────────── */}
         <AnimatePresence mode="wait">
           {showFeatured && (
             <motion.section
@@ -81,59 +85,74 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* ── Video Section ─────────────────────────────────────────── */}
-        <VideoSection />
+        {/* ── Two-column layout: News + Desktop Sidebar ──────────── */}
+        <div className="lg:grid lg:grid-cols-[1fr_300px] lg:gap-6 lg:items-start">
 
-        {/* ── Curated Reads / Publications ──────────────────────────── */}
-        <MagazineSection />
+          {/* ── LEFT: Article count header + grid ─────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={isUrdu
+                ? "text-lg font-bold text-[var(--color-text)] urdu-text"
+                : "text-lg font-bold text-[var(--color-text)]"}>
+                {searchQuery
+                  ? (isUrdu ? `"${searchQuery}" کے نتائج` : `Results for "${searchQuery}"`)
+                  : activeTopics.includes("top")
+                  ? (isUrdu ? "تازہ ترین خبریں" : "Latest Stories")
+                  : activeTopics.map(t => t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, " ")).join(" · ")}
+              </h2>
+              {articles.length > 0 && (
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  {articles.length} {isUrdu ? "خبریں" : "stories"}
+                </span>
+              )}
+            </div>
 
-        {/* ── X (Twitter) Accounts ──────────────────────────────────── */}
-        <XFeedSection />
+            <NewsGrid
+              articles={articles}
+              isLoading={isLoading}
+              error={error}
+              onRefresh={() => { refetch(); refresh(); }}
+            />
 
-        {/* ── News Articles header ───────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className={isUrdu ? "text-lg font-bold text-[var(--color-text)] urdu-text" : "text-lg font-bold text-[var(--color-text)]"}>
-            {searchQuery
-              ? (isUrdu ? `"${searchQuery}" کے نتائج` : `Results for "${searchQuery}"`)
-              : activeTopics.includes("top")
-              ? (isUrdu ? "تازہ ترین خبریں" : "Latest Stories")
-              : activeTopics.map(t => t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, " ")).join(" · ")}
-          </h2>
-          {articles.length > 0 && (
-            <span className="text-xs text-[var(--color-text-tertiary)]">
-              {articles.length} {isUrdu ? "خبریں" : "stories"}
-            </span>
-          )}
+            {/* Empty mascot state */}
+            {!isLoading && !error && articles.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center gap-4 py-16 text-center"
+              >
+                <ScoopMascot size="lg" mood="reading" animated />
+                <div>
+                  <p className="text-lg font-semibold text-[var(--color-text)]">
+                    {isUrdu ? "کوئی خبر نہیں ملی" : "Nothing sniffed out yet"}
+                  </p>
+                  <p className="text-sm text-[var(--color-text-tertiary)] mt-1">
+                    {isUrdu ? "دوسرا موضوع منتخب کریں" : "Try a different topic or hit refresh"}
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </div>
+
+          {/* ── RIGHT: Desktop Sidebar ──────────────────────────────── */}
+          <aside className="hidden lg:flex flex-col gap-4 sticky top-20 self-start">
+            <MarketStrip />
+            <MostReadSidebar articles={articles} />
+          </aside>
         </div>
 
-        <NewsGrid
-          articles={articles}
-          isLoading={isLoading}
-          error={error}
-          onRefresh={() => { refetch(); refresh(); }}
-        />
+        {/* ── Video Section (compact, below news) ─────────────────── */}
+        <VideoSection />
 
-        {/* ── Empty mascot state ────────────────────────────────────── */}
-        {!isLoading && !error && articles.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center gap-4 py-16 text-center"
-          >
-            <ScoopMascot size="lg" mood="reading" animated />
-            <div>
-              <p className="text-lg font-semibold text-[var(--color-text)]">
-                {isUrdu ? "کوئی خبر نہیں ملی" : "Nothing sniffed out yet"}
-              </p>
-              <p className="text-sm text-[var(--color-text-tertiary)] mt-1">
-                {isUrdu ? "دوسرا موضوع منتخب کریں" : "Try a different topic or hit refresh"}
-              </p>
-            </div>
-          </motion.div>
-        )}
+        {/* ── Curated Reads / Publications ───────────────────────── */}
+        <MagazineSection />
+
+        {/* ── X (Twitter) Accounts ───────────────────────────────── */}
+        <XFeedSection />
+
       </main>
 
-      {/* ── Footer ──────────────────────────────────────────────────── */}
+      {/* ── Footer ─────────────────────────────────────────────────── */}
       <footer className="mt-12 py-8 border-t border-[var(--color-border)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[var(--color-text-tertiary)]">
@@ -162,7 +181,7 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Refresh toast */}
+      {/* ── Refresh toast ──────────────────────────────────────────── */}
       <AnimatePresence>
         {lastRefreshed && (
           <motion.div
@@ -181,6 +200,7 @@ export default function App() {
   );
 }
 
+/* ── Side card used in the hero grid ───────────────────────────────────────── */
 function SideCard({ article }) {
   const COLORS = {
     top: "#FF3B30", politics: "#007AFF", sports: "#34C759",
