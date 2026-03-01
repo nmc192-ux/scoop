@@ -13,14 +13,6 @@ const LIVE_CHANNELS = [
     ytUrl:     "https://www.youtube.com/@AlJazeeraEnglish/live",
   },
   {
-    id:        "bloomberg",
-    name:      "Bloomberg",
-    flag:      "📈",
-    color:     "#1F8EFA",
-    channelId: "UCIALMKvObZNtJ6AmdCLP7Sg",
-    ytUrl:     "https://www.youtube.com/@BloombergTV/live",
-  },
-  {
     id:        "bbc",
     name:      "BBC News",
     flag:      "🇬🇧",
@@ -29,11 +21,51 @@ const LIVE_CHANNELS = [
     ytUrl:     "https://www.youtube.com/@BBCNews/live",
   },
   {
+    id:        "skynews",
+    name:      "Sky News",
+    flag:      "🇬🇧",
+    color:     "#E8000D",
+    channelId: "UCoMdktPbSTixAyNGwb-UYkQ",
+    ytUrl:     "https://www.youtube.com/@SkyNews/live",
+  },
+  {
+    id:        "cnn",
+    name:      "CNN",
+    flag:      "🇺🇸",
+    color:     "#CC0000",
+    channelId: "UCupvZG-5ko_eiXAupbDfxWw",
+    ytUrl:     "https://www.youtube.com/@CNN/live",
+  },
+  {
+    id:        "dw",
+    name:      "DW News",
+    flag:      "🇩🇪",
+    color:     "#0000A0",
+    channelId: "UCknLrEdhRCp1aegoMqRaCZg",
+    ytUrl:     "https://www.youtube.com/@DWNews/live",
+  },
+  {
+    id:        "france24",
+    name:      "France 24",
+    flag:      "🇫🇷",
+    color:     "#003F8F",
+    channelId: "UCQfwfsi5VrQ8yKZ-UWmAEFg",
+    ytUrl:     "https://www.youtube.com/@FRANCE24English/live",
+  },
+  {
+    id:        "wion",
+    name:      "WION",
+    flag:      "🌏",
+    color:     "#E63946",
+    channelId: "UC_gUM8rL-Lrg6O3adPW9K1g",
+    ytUrl:     "https://www.youtube.com/@WION/live",
+  },
+  {
     id:        "geo",
     name:      "Geo News",
     flag:      "🇵🇰",
     color:     "#009900",
-    channelId: "UCnTsVDFDFWWsOBgO8yJggog",
+    channelId: "UC_vt34wimdCzdkrzVejwX9g",
     ytUrl:     "https://www.youtube.com/@geonews/live",
   },
   {
@@ -41,7 +73,7 @@ const LIVE_CHANNELS = [
     name:      "ARY News",
     flag:      "🇵🇰",
     color:     "#003399",
-    channelId: "UCk5BKS9RLYS8BNFJKnR2kVg",
+    channelId: "UCMmpLL2ucRHAXbNHiCPyIyg",
     ytUrl:     "https://www.youtube.com/@arynewspk/live",
   },
 ];
@@ -91,7 +123,7 @@ export default function LiveTVSection() {
               <LiveDot />
             </div>
             <p className="text-xs text-[var(--color-text-tertiary)] leading-tight">
-              {LIVE_CHANNELS.length} channels · live streams
+              {LIVE_CHANNELS.length} channels · 24/7 live
             </p>
           </div>
         </div>
