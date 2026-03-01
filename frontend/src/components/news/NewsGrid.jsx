@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown } from "lucide-react";
 import NewsCard from "./NewsCard";
 import { useNewsStore } from "../../store/newsStore";
 import { LoadingGrid } from "../ui/LoadingCard";
 import EmptyState from "../ui/EmptyState";
 
+const PAGE_SIZE = 18;
+
 export default function NewsGrid({ articles = [], isLoading, error, onRefresh }) {
   const { viewMode } = useNewsStore();
+  const [page, setPage] = useState(1);
 
   // Dedup by id
   const dedupedArticles = useMemo(() => {
@@ -17,6 +21,12 @@ export default function NewsGrid({ articles = [], isLoading, error, onRefresh })
       return true;
     });
   }, [articles]);
+
+  // Reset to page 1 whenever the articles list changes (topic/search switch)
+  useEffect(() => { setPage(1); }, [articles]);
+
+  const visibleArticles = dedupedArticles.slice(0, page * PAGE_SIZE);
+  const hasMore = dedupedArticles.length > page * PAGE_SIZE;
 
   if (isLoading && dedupedArticles.length === 0) {
     return <LoadingGrid count={9} />;
@@ -40,7 +50,7 @@ export default function NewsGrid({ articles = [], isLoading, error, onRefresh })
             animate={{ opacity: 1 }}
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
           >
-            {dedupedArticles.map((article, i) => (
+            {visibleArticles.map((article, i) => (
               <NewsCard key={article.id} article={article} index={i} />
             ))}
           </motion.div>
@@ -51,13 +61,14 @@ export default function NewsGrid({ articles = [], isLoading, error, onRefresh })
             animate={{ opacity: 1 }}
             className="flex flex-col gap-3"
           >
-            {dedupedArticles.map((article, i) => (
+            {visibleArticles.map((article, i) => (
               <ListCard key={article.id} article={article} index={i} />
             ))}
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* Loading spinner when refreshing */}
       {isLoading && dedupedArticles.length > 0 && (
         <div className="flex justify-center py-4">
           <div className="flex gap-1.5">
@@ -71,6 +82,30 @@ export default function NewsGrid({ articles = [], isLoading, error, onRefresh })
             ))}
           </div>
         </div>
+      )}
+
+      {/* Load More button */}
+      {!isLoading && hasMore && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center gap-1.5 pt-2"
+        >
+          <button
+            onClick={() => setPage(p => p + 1)}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold
+                       bg-[var(--color-surface)] border border-[var(--color-border)]
+                       text-[var(--color-text-secondary)] hover:bg-[var(--color-surface2)]
+                       hover:text-[var(--color-text)] hover:border-[var(--color-text-tertiary)]
+                       transition-all duration-200 shadow-sm"
+          >
+            <ChevronDown size={15} />
+            Load more stories
+          </button>
+          <p className="text-xs text-[var(--color-text-tertiary)]">
+            Showing {visibleArticles.length} of {dedupedArticles.length}
+          </p>
+        </motion.div>
       )}
     </div>
   );

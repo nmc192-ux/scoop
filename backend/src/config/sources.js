@@ -71,8 +71,15 @@ export const RSS_SOURCES = [
   { name: "Inside Climate News", url: "https://insideclimatenews.org/feed/",            category: "environment", credibility: 8, region: "global" },
   { name: "Carbon Brief",    url: "https://www.carbonbrief.org/feed",                  category: "environment", credibility: 9, region: "global" },
 
-  // ─── WEATHER ──────────────────────────────────────────────────────
-  { name: "NOAA News",       url: "https://www.noaa.gov/stories.xml",                  category: "weather", credibility: 10, region: "us"     },
+  // ─── WEATHER — now a real widget; RSS removed ─────────────────────
+  // (Weather data served via /api/weather → OpenWeatherMap proxy)
+
+  // ─── CARS & AUTOMOTIVE ────────────────────────────────────────────
+  { name: "PakWheels Blog",  url: "https://www.pakwheels.com/blog/feed/",               category: "cars",    credibility: 8,  region: "pk"     },
+  { name: "Car and Driver",  url: "https://www.caranddriver.com/rss/all.xml",           category: "cars",    credibility: 9,  region: "global" },
+  { name: "Top Gear",        url: "https://www.topgear.com/car-news/rss",               category: "cars",    credibility: 9,  region: "global" },
+  { name: "MotorTrend",      url: "https://www.motortrend.com/rss/all.xml",             category: "cars",    credibility: 8,  region: "global" },
+  { name: "Road & Track",    url: "https://www.roadandtrack.com/rss/",                  category: "cars",    credibility: 8,  region: "global" },
 
   // ─── AI ───────────────────────────────────────────────────────────
   { name: "MIT Technology Review", url: "https://www.technologyreview.com/feed/",      category: "ai",      credibility: 10, region: "global" },
@@ -283,6 +290,12 @@ export const X_ACCOUNTS = {
     { handle: "weatherchannel", name: "Weather Channel",  desc: "Weather forecasts",        verified: true  },
     { handle: "NOAAClimate",    name: "NOAA Climate",     desc: "Climate monitoring",       verified: true  },
   ],
+  cars: [
+    { handle: "PakWheels",      name: "PakWheels",        desc: "Pakistan's car marketplace",verified: true  },
+    { handle: "caranddriver",   name: "Car and Driver",   desc: "Car reviews & news",       verified: true  },
+    { handle: "TopGear",        name: "Top Gear",         desc: "BBC motoring show",        verified: true  },
+    { handle: "MotorTrend",     name: "MotorTrend",       desc: "Auto news & reviews",      verified: true  },
+  ],
   "self-help": [
     { handle: "TonyRobbins",    name: "Tony Robbins",     desc: "Life & business coach",    verified: true  },
     { handle: "BreneBrown",     name: "Brené Brown",      desc: "Vulnerability researcher", verified: true  },
@@ -334,6 +347,7 @@ export const TOPICS = [
   { id: "business",       label: "Business",       emoji: "💼", color: "#F59E0B" },
   { id: "local",          label: "Local",          emoji: "📍", color: "#FF9500" },
   { id: "sports",         label: "Sports",         emoji: "🏆", color: "#34C759" },
+  { id: "cars",           label: "Cars",           emoji: "🚗", color: "#E63946" },
   { id: "science",        label: "Science",        emoji: "🔬", color: "#5AC8FA" },
   { id: "medicine",       label: "Medicine",       emoji: "⚕️", color: "#FF2D55" },
   { id: "health",         label: "Health",         emoji: "💪", color: "#4CD964" },

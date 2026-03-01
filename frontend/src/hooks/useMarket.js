@@ -39,3 +39,22 @@ export function usePublicationArticles(sourceName, limit = 20) {
     placeholderData: (prev) => prev,
   });
 }
+
+/**
+ * Fetches articles from a single cars source.
+ * Mirrors usePublicationArticles but targets category: "cars".
+ */
+export function useCarSourceArticles(sourceName, limit = 20) {
+  return useQuery({
+    queryKey: ["car-articles", sourceName],
+    queryFn: async () => {
+      const { data } = await api.get("/news", {
+        params: { source: sourceName, limit, category: "cars" },
+      });
+      return data.data || [];
+    },
+    staleTime: 10 * 60 * 1000,
+    enabled: !!sourceName,
+    placeholderData: (prev) => prev,
+  });
+}

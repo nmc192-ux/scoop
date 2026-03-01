@@ -87,7 +87,12 @@ export default function FeaturedCard({ article }) {
               >
                 {label}
               </span>
-              {isRecent && <span className="breaking-badge">Breaking</span>}
+              {isRecent && (
+                <span className="live-badge">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white inline-block" />
+                  LIVE
+                </span>
+              )}
               {article.credibility >= 9 && (
                 <span className="text-xs text-white/70">✓ Verified</span>
               )}

@@ -13,6 +13,7 @@ const TOPIC_COLORS = {
   business: "#F59E0B",
   local: "#FF9500",
   sports: "#34C759",
+  cars: "#E63946",
   science: "#5AC8FA",
   medicine: "#FF2D55",
   health: "#4CD964",

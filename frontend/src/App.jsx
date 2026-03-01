@@ -6,10 +6,13 @@ import FeaturedCard from "./components/news/FeaturedCard";
 import NewsGrid from "./components/news/NewsGrid";
 import StatsBar from "./components/news/StatsBar";
 import VideoSection from "./components/news/VideoSection";
+import LiveTVSection from "./components/news/LiveTVSection";
 import XFeedSection from "./components/news/XFeedSection";
 import MarketStrip from "./components/news/MarketStrip";
 import MagazineSection from "./components/news/MagazineSection";
+import CarsSection from "./components/news/CarsSection";
 import MostReadSidebar from "./components/news/MostReadSidebar";
+import WeatherWidget from "./components/news/WeatherWidget";
 import { LoadingHero } from "./components/ui/LoadingCard";
 import { BackendOffline } from "./components/ui/EmptyState";
 import { useNews, useFeatured, useHealth, useRefresh } from "./hooks/useNews";
@@ -136,6 +139,7 @@ export default function App() {
 
           {/* ── RIGHT: Desktop Sidebar ──────────────────────────────── */}
           <aside className="hidden lg:flex flex-col gap-4 sticky top-20 self-start">
+            <WeatherWidget />
             <MarketStrip />
             <MostReadSidebar articles={articles} />
           </aside>
@@ -144,8 +148,14 @@ export default function App() {
         {/* ── Video Section (compact, below news) ─────────────────── */}
         <VideoSection />
 
+        {/* ── Live TV (YouTube live streams) ──────────────────────── */}
+        <LiveTVSection />
+
         {/* ── Curated Reads / Publications ───────────────────────── */}
         <MagazineSection />
+
+        {/* ── Cars & Automotive ───────────────────────────────────── */}
+        <CarsSection />
 
         {/* ── X (Twitter) Accounts ───────────────────────────────── */}
         <XFeedSection />

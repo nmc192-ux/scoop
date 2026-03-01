@@ -116,6 +116,12 @@
     animation: pulseSoft 2s ease-in-out infinite;
   }
 
+  .live-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md
+           bg-brand-red text-white text-xs font-bold uppercase tracking-widest;
+    animation: livePulse 1.4s ease-in-out infinite;
+  }
+
   .source-badge {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md
            bg-[var(--color-surface2)] text-[var(--color-text-tertiary)]
@@ -197,6 +203,11 @@
 @keyframes pulseSoft {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 @keyframes spin-slow {
