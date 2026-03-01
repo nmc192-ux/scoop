@@ -14,11 +14,14 @@ export function useWeather(coords) {
     queryFn: async () => {
       const params = coords ? { lat: coords.lat, lon: coords.lon } : {};
       const { data } = await api.get("/weather", { params });
-      return data.data || null;
+      if (!data.success) throw new Error(data.error || "Weather fetch failed");
+      return data.data ?? null;
     },
-    staleTime:       15 * 60 * 1000,
-    refetchInterval: 15 * 60 * 1000,
-    retry: 1,
-    placeholderData: (prev) => prev,
+    staleTime:            15 * 60 * 1000,
+    refetchInterval:      15 * 60 * 1000,
+    retry:                3,
+    retryDelay:           (attempt) => Math.min(1000 * (attempt + 1), 5000),
+    refetchOnWindowFocus: true,
+    placeholderData:      (prev) => prev,
   });
 }

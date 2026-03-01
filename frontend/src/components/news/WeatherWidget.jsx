@@ -1,10 +1,11 @@
 /**
  * WeatherWidget — compact sidebar weather card
  *
- * - Requests browser geolocation on mount
- * - Falls back to Karachi on deny / error
- * - Fetches data via /api/weather (OpenWeatherMap proxy)
- * - 15-minute client-side cache via React Query
+ * Strategy:
+ *  1. Fetch Karachi weather immediately (no geo wait = no spinner delay)
+ *  2. Request geolocation in background
+ *  3. If granted, update coords → React Query fetches actual location data
+ *  4. Graceful error card with retry button if the API is unreachable
  */
 
 import { useState, useEffect } from "react";
@@ -12,7 +13,7 @@ import { motion } from "framer-motion";
 import { Wind, Droplets, MapPin, RefreshCw } from "lucide-react";
 import { useWeather } from "../../hooks/useWeather";
 
-/* ─── Condition → emoji map ──────────────────────────────────────────────────── */
+/* ─── Condition → emoji ─────────────────────────────────────────────────────── */
 const CONDITION_EMOJI = {
   Clear:        "☀️",
   Clouds:       "☁️",
@@ -31,25 +32,24 @@ const CONDITION_EMOJI = {
   Tornado:      "🌪️",
 };
 
-function conditionEmoji(condition) {
-  return CONDITION_EMOJI[condition] ?? "🌡️";
-}
-
-/* ─── Background gradient per condition ──────────────────────────────────────── */
-function conditionGradient(condition) {
-  const map = {
-    Clear:        "from-amber-400/20 to-orange-300/10",
-    Clouds:       "from-slate-400/20 to-slate-300/10",
-    Rain:         "from-blue-500/20 to-blue-300/10",
-    Drizzle:      "from-blue-400/15 to-sky-300/10",
-    Thunderstorm: "from-purple-600/20 to-slate-500/10",
-    Snow:         "from-sky-200/30 to-blue-100/15",
-    Mist:         "from-gray-400/15 to-gray-300/10",
+/* ─── Condition → inline style gradient (avoids Tailwind purge issues) ───────── */
+function conditionStyle(condition) {
+  const gradients = {
+    Clear:        "linear-gradient(135deg, rgba(251,191,36,0.18) 0%, rgba(253,186,116,0.10) 100%)",
+    Clouds:       "linear-gradient(135deg, rgba(148,163,184,0.18) 0%, rgba(203,213,225,0.10) 100%)",
+    Rain:         "linear-gradient(135deg, rgba(59,130,246,0.18) 0%, rgba(147,197,253,0.10) 100%)",
+    Drizzle:      "linear-gradient(135deg, rgba(96,165,250,0.15) 0%, rgba(186,230,253,0.10) 100%)",
+    Thunderstorm: "linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(100,116,139,0.10) 100%)",
+    Snow:         "linear-gradient(135deg, rgba(186,230,253,0.25) 0%, rgba(224,242,254,0.15) 100%)",
+    Mist:         "linear-gradient(135deg, rgba(148,163,184,0.15) 0%, rgba(203,213,225,0.10) 100%)",
   };
-  return map[condition] ?? "from-sky-400/15 to-blue-300/10";
+  return {
+    background: gradients[condition]
+      ?? "linear-gradient(135deg, rgba(56,189,248,0.15) 0%, rgba(147,197,253,0.10) 100%)",
+  };
 }
 
-/* ─── Skeleton loader ────────────────────────────────────────────────────────── */
+/* ─── Skeleton ───────────────────────────────────────────────────────────────── */
 function WeatherSkeleton() {
   return (
     <div className="card p-4 mb-4 animate-pulse">
@@ -70,63 +70,54 @@ function WeatherSkeleton() {
 
 /* ─── Main component ─────────────────────────────────────────────────────────── */
 export default function WeatherWidget() {
+  // Start with null → backend uses Karachi as default
   const [coords, setCoords] = useState(null);
-  const [geoTried, setGeoTried] = useState(false);
 
-  /* Request geolocation once on mount */
+  /* Request geolocation in the background — don't block the initial render */
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeoTried(true);
-      return;
-    }
+    if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-        setGeoTried(true);
-      },
-      () => {
-        // Denied or error → use Karachi as fallback (null coords = backend default)
-        setCoords(null);
-        setGeoTried(true);
-      },
-      { timeout: 6000 }
+      (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => { /* denied / error — stay on Karachi */ },
+      { timeout: 8000 }
     );
   }, []);
 
-  const { data: weather, isLoading, isError, refetch } = useWeather(
-    geoTried ? coords : undefined   // undefined → query disabled until geo attempt done
-  );
+  // Query starts immediately with Karachi (null coords), updates when geo resolves
+  const { data: weather, isLoading, isError, refetch, isFetching } = useWeather(coords);
 
-  /* Don't render until geolocation attempt has completed */
-  if (!geoTried || isLoading) return <WeatherSkeleton />;
+  if (isLoading) return <WeatherSkeleton />;
 
   if (isError || !weather) {
     return (
-      <div className="card p-4 mb-4 text-center">
-        <p className="text-xs text-[var(--color-text-tertiary)]">
-          🌡️ Weather unavailable
+      <div className="card p-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-[var(--color-text-secondary)]">🌡️ Weather</span>
+        </div>
+        <p className="text-xs text-[var(--color-text-tertiary)] mb-3">
+          Could not load weather data.
         </p>
         <button
           onClick={() => refetch()}
-          className="mt-2 text-xs text-brand-blue hover:underline flex items-center gap-1 mx-auto"
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold
+                     bg-[var(--color-surface2)] text-[var(--color-text-secondary)]
+                     hover:bg-[var(--color-border)] transition-colors"
         >
-          <RefreshCw size={10} /> Retry
+          <RefreshCw size={11} /> Try again
         </button>
       </div>
     );
   }
 
-  const emoji = conditionEmoji(weather.condition);
-  const gradient = conditionGradient(weather.condition);
-
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`card mb-4 overflow-hidden bg-gradient-to-br ${gradient}`}
+      className="card mb-4 overflow-hidden"
+      style={conditionStyle(weather.condition)}
     >
       <div className="p-4">
-        {/* Header row: location */}
+        {/* Location + refresh */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
             <MapPin size={11} />
@@ -136,17 +127,19 @@ export default function WeatherWidget() {
           </div>
           <button
             onClick={() => refetch()}
-            className="p-1 rounded-full hover:bg-[var(--color-surface2)] text-[var(--color-text-tertiary)] transition-colors"
+            disabled={isFetching}
+            className="p-1 rounded-full hover:bg-[var(--color-surface2)] text-[var(--color-text-tertiary)]
+                       transition-colors disabled:opacity-40"
             title="Refresh weather"
           >
-            <RefreshCw size={11} />
+            <RefreshCw size={11} className={isFetching ? "animate-spin" : ""} />
           </button>
         </div>
 
-        {/* Main: emoji + temperature */}
+        {/* Temperature + emoji */}
         <div className="flex items-center gap-3 mb-3">
           <span className="text-4xl leading-none" role="img" aria-label={weather.condition}>
-            {emoji}
+            {CONDITION_EMOJI[weather.condition] ?? "🌡️"}
           </span>
           <div>
             <div className="text-2xl font-bold text-[var(--color-text)] leading-none">
@@ -158,7 +151,7 @@ export default function WeatherWidget() {
           </div>
         </div>
 
-        {/* Secondary: feels like, humidity, wind */}
+        {/* Secondary stats */}
         <div className="flex items-center gap-3 text-xs text-[var(--color-text-tertiary)]">
           <span>Feels {weather.feelsLike}°C</span>
           <span className="flex items-center gap-1">
