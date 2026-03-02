@@ -4,10 +4,12 @@ import { Tv2, ChevronDown, ChevronUp, ExternalLink, RefreshCw } from "lucide-rea
 import { useLiveStreams } from "../../hooks/useLiveStreams";
 
 /* ─── Channel config ─────────────────────────────────────────────────────────
-   fallbackVideoId: used when the backend hasn't returned an ID yet.
-   The backend fetches fresh IDs from YouTube RSS every 10 min.
+   noEmbed: true  → channel has disabled external YouTube embedding.
+                    Show a branded link-card instead of an iframe.
+   liveUrl        → where to send the user when they click "Watch Live"
    ────────────────────────────────────────────────────────────────────────── */
 const LIVE_CHANNELS = [
+  /* ── Embeddable channels ─────────────────────────────────────────────── */
   {
     id:              "aljazeera",
     name:            "Al Jazeera",
@@ -49,31 +51,47 @@ const LIVE_CHANNELS = [
     fallbackVideoId: "Ap-UM1O9RBU",
     ytUrl:           "https://www.youtube.com/c/FRANCE24English/live",
   },
+
+  /* ── Link-only channels (embedding disabled by the channel) ──────────── */
   {
-    id:              "wion",
-    name:            "WION",
-    flag:            "🌏",
-    color:           "#E63946",
-    fallbackVideoId: "R5xoxZHurjQ",
-    ytUrl:           "https://www.youtube.com/@WION/live",
+    id:      "geo",
+    name:    "Geo News",
+    flag:    "🇵🇰",
+    color:   "#009900",
+    noEmbed: true,
+    liveUrl: "https://www.geo.tv/live/geotv",
+    ytUrl:   "https://www.youtube.com/@geonews/live",
+    note:    "Opens on geo.tv",
   },
   {
-    id:              "geo",
-    name:            "Geo News",
-    flag:            "🇵🇰",
-    color:           "#009900",
-    fallbackVideoId: null,
-    channelId:       "UC_vt34wimdCzdkrzVejwX9g",
-    ytUrl:           "https://www.youtube.com/@geonews/live",
+    id:      "ary",
+    name:    "ARY News",
+    flag:    "🇵🇰",
+    color:   "#003399",
+    noEmbed: true,
+    liveUrl: "https://arynews.tv/live/",
+    ytUrl:   "https://www.youtube.com/@arynewspk/live",
+    note:    "Opens on arynews.tv",
   },
   {
-    id:              "ary",
-    name:            "ARY News",
-    flag:            "🇵🇰",
-    color:           "#003399",
-    fallbackVideoId: null,
-    channelId:       "UCMmpLL2ucRHAXbNHiCPyIyg",
-    ytUrl:           "https://www.youtube.com/@arynewspk/live",
+    id:      "wion",
+    name:    "WION",
+    flag:    "🌏",
+    color:   "#E63946",
+    noEmbed: true,
+    liveUrl: "https://www.youtube.com/@WION/live",
+    ytUrl:   "https://www.youtube.com/@WION/live",
+    note:    "Opens on YouTube",
+  },
+  {
+    id:      "bloomberg",
+    name:    "Bloomberg",
+    flag:    "📈",
+    color:   "#1F8EFA",
+    noEmbed: true,
+    liveUrl: "https://www.bloomberg.com/live",
+    ytUrl:   "https://www.youtube.com/@Bloomberg/live",
+    note:    "Opens on Bloomberg",
   },
 ];
 
@@ -82,17 +100,60 @@ function getEmbedUrl(ch, liveVideoId) {
   if (videoId) {
     return `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0&modestbranding=1&showinfo=0`;
   }
-  // channel-based fallback (auto-follows current stream)
   return `https://www.youtube.com/embed/live_stream?channel=${ch.channelId}&autoplay=0&rel=0&modestbranding=1&showinfo=0`;
 }
 
-/* ─── Pulsing red dot ────────────────────────────────────────────────────────── */
+/* ─── Pulsing red dot ──────────────────────────────────────────────────────── */
 function LiveDot() {
   return (
     <span className="relative inline-flex h-2.5 w-2.5 flex-shrink-0">
       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
       <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600" />
     </span>
+  );
+}
+
+/* ─── Link-only card (for channels that block embedding) ───────────────────── */
+function NoEmbedCard({ ch }) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: `linear-gradient(135deg, ${ch.color}28, ${ch.color}10)`, border: `1px solid ${ch.color}33` }}
+    >
+      <div className="flex flex-col items-center justify-center gap-4 py-14 px-6 text-center">
+        <span className="text-6xl">{ch.flag}</span>
+        <div>
+          <p className="text-lg font-bold text-[var(--color-text)] mb-1">{ch.name} Live</p>
+          <p className="text-sm text-[var(--color-text-tertiary)] mb-5">
+            Live stream available on the channel's website
+          </p>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <a
+              href={ch.liveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold text-white transition-opacity hover:opacity-90 shadow-md"
+              style={{ backgroundColor: ch.color }}
+            >
+              <LiveDot />
+              Watch Live
+              <ExternalLink size={13} />
+            </a>
+            {ch.liveUrl !== ch.ytUrl && (
+              <a
+                href={ch.ytUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface2)] transition-colors"
+              >
+                YouTube <ExternalLink size={12} />
+              </a>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--color-text-tertiary)] mt-3 opacity-70">{ch.note}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -105,12 +166,14 @@ export default function LiveTVSection() {
   const { streams } = useLiveStreams();
 
   const activeChannel = LIVE_CHANNELS.find(c => c.id === activeId) || LIVE_CHANNELS[0];
-  const embedUrl = getEmbedUrl(activeChannel, streams[activeChannel.id]);
+  const embedUrl      = activeChannel.noEmbed ? null : getEmbedUrl(activeChannel, streams[activeChannel.id]);
 
   const handleChannelChange = (id) => {
     setActiveId(id);
     setLoadFailed(prev => ({ ...prev, [id]: false }));
   };
+
+  const embedChannels = LIVE_CHANNELS.filter(c => !c.noEmbed).length;
 
   return (
     <section className="mb-8">
@@ -129,11 +192,10 @@ export default function LiveTVSection() {
               <LiveDot />
             </div>
             <p className="text-xs text-[var(--color-text-tertiary)] leading-tight">
-              {LIVE_CHANNELS.length} channels · 24/7 live
+              {LIVE_CHANNELS.length} channels · {embedChannels} embeddable
             </p>
           </div>
         </div>
-
         <button className="p-1.5 rounded-full hover:bg-[var(--color-surface2)] text-[var(--color-text-tertiary)] transition-colors">
           {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
@@ -168,99 +230,96 @@ export default function LiveTVSection() {
                 >
                   <span>{ch.flag}</span>
                   {ch.name}
+                  {ch.noEmbed && (
+                    <ExternalLink size={11} className="opacity-60 ml-0.5" />
+                  )}
                 </button>
               ))}
             </div>
 
-            {/* Player */}
+            {/* Player / Link card */}
             <motion.div
               key={activeId}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className="card overflow-hidden"
+              className="overflow-hidden"
             >
-              {/* 16:9 iframe */}
-              {!loadFailed[activeId] ? (
-                <div className="relative bg-black" style={{ paddingTop: "56.25%" }}>
-                  <iframe
-                    key={embedUrl}
-                    className="absolute inset-0 w-full h-full"
-                    src={embedUrl}
-                    title={`${activeChannel.name} Live`}
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                    onError={() => setLoadFailed(prev => ({ ...prev, [activeId]: true }))}
-                  />
-
-                  {/* Channel name overlay */}
-                  <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-                    <span
-                      className="text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm"
-                      style={{ backgroundColor: activeChannel.color + "cc" }}
+              {activeChannel.noEmbed ? (
+                <NoEmbedCard ch={activeChannel} />
+              ) : !loadFailed[activeId] ? (
+                <div className="card overflow-hidden">
+                  <div className="relative bg-black" style={{ paddingTop: "56.25%" }}>
+                    <iframe
+                      key={embedUrl}
+                      className="absolute inset-0 w-full h-full"
+                      src={embedUrl}
+                      title={`${activeChannel.name} Live`}
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                      onError={() => setLoadFailed(prev => ({ ...prev, [activeId]: true }))}
+                    />
+                    <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+                      <span
+                        className="text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm"
+                        style={{ backgroundColor: activeChannel.color + "cc" }}
+                      >
+                        {activeChannel.flag} {activeChannel.name}
+                      </span>
+                      <span className="flex items-center gap-1 bg-red-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        Live
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border)]">
+                    <div className="flex items-center gap-2">
+                      <LiveDot />
+                      <span className="text-sm font-semibold text-[var(--color-text)]">{activeChannel.name}</span>
+                      <span className="text-xs text-[var(--color-text-tertiary)]">· Live stream</span>
+                    </div>
+                    <a
+                      href={activeChannel.ytUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-medium text-brand-blue hover:underline"
                     >
-                      {activeChannel.flag} {activeChannel.name}
-                    </span>
-                    <span className="flex items-center gap-1 bg-red-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                      Live
-                    </span>
+                      YouTube <ExternalLink size={11} />
+                    </a>
                   </div>
                 </div>
               ) : (
-                /* Fallback when embed fails */
-                <div
-                  className="flex flex-col items-center justify-center gap-4 py-16"
-                  style={{ background: `linear-gradient(135deg, ${activeChannel.color}22, ${activeChannel.color}11)` }}
-                >
-                  <span className="text-5xl">{activeChannel.flag}</span>
-                  <div className="text-center">
-                    <p className="font-semibold text-[var(--color-text)] mb-1">
-                      {activeChannel.name} Live
-                    </p>
-                    <p className="text-sm text-[var(--color-text-tertiary)] mb-4">
-                      Live stream unavailable in embedded view
-                    </p>
-                    <div className="flex items-center justify-center gap-3">
-                      <button
-                        onClick={() => setLoadFailed(prev => ({ ...prev, [activeId]: false }))}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface2)] transition-colors"
-                      >
-                        <RefreshCw size={13} /> Retry
-                      </button>
-                      <a
-                        href={activeChannel.ytUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                        style={{ backgroundColor: activeChannel.color }}
-                      >
-                        Watch on YouTube <ExternalLink size={13} />
-                      </a>
+                <div className="card overflow-hidden">
+                  <div
+                    className="flex flex-col items-center justify-center gap-4 py-16"
+                    style={{ background: `linear-gradient(135deg, ${activeChannel.color}22, ${activeChannel.color}11)` }}
+                  >
+                    <span className="text-5xl">{activeChannel.flag}</span>
+                    <div className="text-center">
+                      <p className="font-semibold text-[var(--color-text)] mb-1">{activeChannel.name} Live</p>
+                      <p className="text-sm text-[var(--color-text-tertiary)] mb-4">Stream unavailable in embedded view</p>
+                      <div className="flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => setLoadFailed(prev => ({ ...prev, [activeId]: false }))}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface2)] transition-colors"
+                        >
+                          <RefreshCw size={13} /> Retry
+                        </button>
+                        <a
+                          href={activeChannel.ytUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                          style={{ backgroundColor: activeChannel.color }}
+                        >
+                          Watch on YouTube <ExternalLink size={13} />
+                        </a>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
-
-              {/* Footer bar */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border)]">
-                <div className="flex items-center gap-2">
-                  <LiveDot />
-                  <span className="text-sm font-semibold text-[var(--color-text)]">
-                    {activeChannel.name}
-                  </span>
-                  <span className="text-xs text-[var(--color-text-tertiary)]">· Live stream</span>
-                </div>
-                <a
-                  href={activeChannel.ytUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs font-medium text-brand-blue hover:underline"
-                >
-                  YouTube <ExternalLink size={11} />
-                </a>
-              </div>
             </motion.div>
           </motion.div>
         )}
