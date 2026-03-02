@@ -2,14 +2,17 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tv2, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
-/* ─── Channel config — add more here any time ───────────────────────────────── */
+/* ─── Channel config ─────────────────────────────────────────────────────────
+   videoId  = direct YouTube video ID (most reliable for 24/7 streams)
+   channelId = fallback if no stable videoId exists (uses live_stream embed)
+   ────────────────────────────────────────────────────────────────────────── */
 const LIVE_CHANNELS = [
   {
     id:        "aljazeera",
     name:      "Al Jazeera",
     flag:      "🌍",
     color:     "#C8A951",
-    channelId: "UCNye-wNBqNL5ZzHSJj3l8Bg",
+    videoId:   "gCNeDWCI0vo",
     ytUrl:     "https://www.youtube.com/@AlJazeeraEnglish/live",
   },
   {
@@ -25,23 +28,15 @@ const LIVE_CHANNELS = [
     name:      "Sky News",
     flag:      "🇬🇧",
     color:     "#E8000D",
-    channelId: "UCoMdktPbSTixAyNGwb-UYkQ",
+    videoId:   "9Auq9mYxFEE",
     ytUrl:     "https://www.youtube.com/@SkyNews/live",
-  },
-  {
-    id:        "cnn",
-    name:      "CNN",
-    flag:      "🇺🇸",
-    color:     "#CC0000",
-    channelId: "UCupvZG-5ko_eiXAupbDfxWw",
-    ytUrl:     "https://www.youtube.com/@CNN/live",
   },
   {
     id:        "dw",
     name:      "DW News",
     flag:      "🇩🇪",
     color:     "#0000A0",
-    channelId: "UCknLrEdhRCp1aegoMqRaCZg",
+    videoId:   "LuKwFajn37U",
     ytUrl:     "https://www.youtube.com/@DWNews/live",
   },
   {
@@ -49,7 +44,7 @@ const LIVE_CHANNELS = [
     name:      "France 24",
     flag:      "🇫🇷",
     color:     "#003F8F",
-    channelId: "UCQfwfsi5VrQ8yKZ-UWmAEFg",
+    videoId:   "Ap-UM1O9RBU",
     ytUrl:     "https://www.youtube.com/@FRANCE24English/live",
   },
   {
@@ -65,7 +60,7 @@ const LIVE_CHANNELS = [
     name:      "Geo News",
     flag:      "🇵🇰",
     color:     "#009900",
-    channelId: "UC_vt34wimdCzdkrzVejwX9g",
+    videoId:   "_FwympjOSNE",
     ytUrl:     "https://www.youtube.com/@geonews/live",
   },
   {
@@ -73,10 +68,19 @@ const LIVE_CHANNELS = [
     name:      "ARY News",
     flag:      "🇵🇰",
     color:     "#003399",
-    channelId: "UCMmpLL2ucRHAXbNHiCPyIyg",
+    videoId:   "0_riyxKLdxU",
     ytUrl:     "https://www.youtube.com/@arynewspk/live",
   },
 ];
+
+function getEmbedUrl(ch) {
+  const base = ch.videoId
+    ? `https://www.youtube.com/embed/${ch.videoId}`
+    : `https://www.youtube.com/embed/live_stream?channel=${ch.channelId}`;
+  return base + (ch.videoId
+    ? "?autoplay=0&rel=0&modestbranding=1&showinfo=0"
+    : "&autoplay=0&rel=0&modestbranding=1&showinfo=0");
+}
 
 /* ─── Pulsing red dot ────────────────────────────────────────────────────────── */
 function LiveDot() {
@@ -95,14 +99,10 @@ export default function LiveTVSection() {
   const [loadFailed, setLoadFailed] = useState({});
 
   const activeChannel = LIVE_CHANNELS.find(c => c.id === activeId) || LIVE_CHANNELS[0];
-
-  const embedUrl =
-    `https://www.youtube.com/embed/live_stream?channel=${activeChannel.channelId}` +
-    `&autoplay=0&rel=0&modestbranding=1&showinfo=0`;
+  const embedUrl = getEmbedUrl(activeChannel);
 
   const handleChannelChange = (id) => {
     setActiveId(id);
-    // Reset load-failed state for the new channel
     setLoadFailed(prev => ({ ...prev, [id]: false }));
   };
 
