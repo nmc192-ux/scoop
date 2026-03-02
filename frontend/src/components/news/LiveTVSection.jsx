@@ -1,85 +1,89 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Tv2, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Tv2, ChevronDown, ChevronUp, ExternalLink, RefreshCw } from "lucide-react";
+import { useLiveStreams } from "../../hooks/useLiveStreams";
 
 /* ─── Channel config ─────────────────────────────────────────────────────────
-   videoId  = direct YouTube video ID (most reliable for 24/7 streams)
-   channelId = fallback if no stable videoId exists (uses live_stream embed)
+   fallbackVideoId: used when the backend hasn't returned an ID yet.
+   The backend fetches fresh IDs from YouTube RSS every 10 min.
    ────────────────────────────────────────────────────────────────────────── */
 const LIVE_CHANNELS = [
   {
-    id:        "aljazeera",
-    name:      "Al Jazeera",
-    flag:      "🌍",
-    color:     "#C8A951",
-    videoId:   "gCNeDWCI0vo",
-    ytUrl:     "https://www.youtube.com/@AlJazeeraEnglish/live",
+    id:              "aljazeera",
+    name:            "Al Jazeera",
+    flag:            "🌍",
+    color:           "#C8A951",
+    fallbackVideoId: "gCNeDWCI0vo",
+    ytUrl:           "https://www.youtube.com/@AlJazeeraEnglish/live",
   },
   {
-    id:        "bbc",
-    name:      "BBC News",
-    flag:      "🇬🇧",
-    color:     "#BB1919",
-    channelId: "UC16niRr50-MSBwiO3YDb3RA",
-    ytUrl:     "https://www.youtube.com/@BBCNews/live",
+    id:              "bbc",
+    name:            "BBC News",
+    flag:            "🇬🇧",
+    color:           "#BB1919",
+    fallbackVideoId: null,
+    channelId:       "UC16niRr50-MSBwiO3YDb3RA",
+    ytUrl:           "https://www.youtube.com/@BBCNews/live",
   },
   {
-    id:        "skynews",
-    name:      "Sky News",
-    flag:      "🇬🇧",
-    color:     "#E8000D",
-    videoId:   "9Auq9mYxFEE",
-    ytUrl:     "https://www.youtube.com/@SkyNews/live",
+    id:              "skynews",
+    name:            "Sky News",
+    flag:            "🇬🇧",
+    color:           "#E8000D",
+    fallbackVideoId: "9lFYDRvw7ns",
+    ytUrl:           "https://www.youtube.com/@SkyNews/live",
   },
   {
-    id:        "dw",
-    name:      "DW News",
-    flag:      "🇩🇪",
-    color:     "#0000A0",
-    videoId:   "LuKwFajn37U",
-    ytUrl:     "https://www.youtube.com/@DWNews/live",
+    id:              "dw",
+    name:            "DW News",
+    flag:            "🇩🇪",
+    color:           "#0000A0",
+    fallbackVideoId: "LuKwFajn37U",
+    ytUrl:           "https://www.youtube.com/@DWNews/live",
   },
   {
-    id:        "france24",
-    name:      "France 24",
-    flag:      "🇫🇷",
-    color:     "#003F8F",
-    videoId:   "Ap-UM1O9RBU",
-    ytUrl:     "https://www.youtube.com/@FRANCE24English/live",
+    id:              "france24",
+    name:            "France 24",
+    flag:            "🇫🇷",
+    color:           "#003F8F",
+    fallbackVideoId: "Ap-UM1O9RBU",
+    ytUrl:           "https://www.youtube.com/c/FRANCE24English/live",
   },
   {
-    id:        "wion",
-    name:      "WION",
-    flag:      "🌏",
-    color:     "#E63946",
-    channelId: "UC_gUM8rL-Lrg6O3adPW9K1g",
-    ytUrl:     "https://www.youtube.com/@WION/live",
+    id:              "wion",
+    name:            "WION",
+    flag:            "🌏",
+    color:           "#E63946",
+    fallbackVideoId: "R5xoxZHurjQ",
+    ytUrl:           "https://www.youtube.com/@WION/live",
   },
   {
-    id:        "geo",
-    name:      "Geo News",
-    flag:      "🇵🇰",
-    color:     "#009900",
-    videoId:   "_FwympjOSNE",
-    ytUrl:     "https://www.youtube.com/@geonews/live",
+    id:              "geo",
+    name:            "Geo News",
+    flag:            "🇵🇰",
+    color:           "#009900",
+    fallbackVideoId: null,
+    channelId:       "UC_vt34wimdCzdkrzVejwX9g",
+    ytUrl:           "https://www.youtube.com/@geonews/live",
   },
   {
-    id:        "ary",
-    name:      "ARY News",
-    flag:      "🇵🇰",
-    color:     "#003399",
-    videoId:   "0_riyxKLdxU",
-    ytUrl:     "https://www.youtube.com/@arynewspk/live",
+    id:              "ary",
+    name:            "ARY News",
+    flag:            "🇵🇰",
+    color:           "#003399",
+    fallbackVideoId: null,
+    channelId:       "UCMmpLL2ucRHAXbNHiCPyIyg",
+    ytUrl:           "https://www.youtube.com/@arynewspk/live",
   },
 ];
 
-function getEmbedUrl(ch) {
-  const base = ch.videoId
-    ? `https://www.youtube.com/embed/${ch.videoId}`
-    : `https://www.youtube.com/embed/live_stream?channel=${ch.channelId}`;
-  return base + (ch.videoId
-    ? "?autoplay=0&rel=0&modestbranding=1&showinfo=0"
-    : "&autoplay=0&rel=0&modestbranding=1&showinfo=0");
+function getEmbedUrl(ch, liveVideoId) {
+  const videoId = liveVideoId || ch.fallbackVideoId;
+  if (videoId) {
+    return `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0&modestbranding=1&showinfo=0`;
+  }
+  // channel-based fallback (auto-follows current stream)
+  return `https://www.youtube.com/embed/live_stream?channel=${ch.channelId}&autoplay=0&rel=0&modestbranding=1&showinfo=0`;
 }
 
 /* ─── Pulsing red dot ────────────────────────────────────────────────────────── */
@@ -98,8 +102,10 @@ export default function LiveTVSection() {
   const [activeId,   setActiveId]   = useState(LIVE_CHANNELS[0].id);
   const [loadFailed, setLoadFailed] = useState({});
 
+  const { streams } = useLiveStreams();
+
   const activeChannel = LIVE_CHANNELS.find(c => c.id === activeId) || LIVE_CHANNELS[0];
-  const embedUrl = getEmbedUrl(activeChannel);
+  const embedUrl = getEmbedUrl(activeChannel, streams[activeChannel.id]);
 
   const handleChannelChange = (id) => {
     setActiveId(id);
@@ -178,7 +184,7 @@ export default function LiveTVSection() {
               {!loadFailed[activeId] ? (
                 <div className="relative bg-black" style={{ paddingTop: "56.25%" }}>
                   <iframe
-                    key={activeId}
+                    key={embedUrl}
                     className="absolute inset-0 w-full h-full"
                     src={embedUrl}
                     title={`${activeChannel.name} Live`}
@@ -214,17 +220,25 @@ export default function LiveTVSection() {
                       {activeChannel.name} Live
                     </p>
                     <p className="text-sm text-[var(--color-text-tertiary)] mb-4">
-                      Live stream not available in embedded view
+                      Live stream unavailable in embedded view
                     </p>
-                    <a
-                      href={activeChannel.ytUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                      style={{ backgroundColor: activeChannel.color }}
-                    >
-                      Watch on YouTube <ExternalLink size={13} />
-                    </a>
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => setLoadFailed(prev => ({ ...prev, [activeId]: false }))}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface2)] transition-colors"
+                      >
+                        <RefreshCw size={13} /> Retry
+                      </button>
+                      <a
+                        href={activeChannel.ytUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: activeChannel.color }}
+                      >
+                        Watch on YouTube <ExternalLink size={13} />
+                      </a>
+                    </div>
                   </div>
                 </div>
               )}
