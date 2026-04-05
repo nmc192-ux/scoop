@@ -1,0 +1,147 @@
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { ExternalLink, Clock, Bookmark, BookmarkCheck } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { useNewsStore } from "../../store/newsStore";
+import { useTranslatedTexts } from "../../hooks/useTranslation";
+import clsx from "clsx";
+
+const TOPIC_COLORS = {
+  top: "#FF3B30", politics: "#007AFF", international: "#5856D6",
+  pakistan: "#01411C", local: "#FF9500", sports: "#34C759",
+  science: "#5AC8FA", medicine: "#FF2D55", health: "#4CD964",
+  "public-health": "#FF6B35", "self-help": "#AF52DE", environment: "#30B0C7",
+  weather: "#64D2FF", ai: "#007AFF", "computer-science": "#5856D6", "agentic-ai": "#FF3B30",
+};
+
+const TOPIC_LABELS = {
+  top: "Top Story", politics: "Politics", international: "World News",
+  pakistan: "Pakistan", local: "Local", sports: "Sports", science: "Science",
+  medicine: "Medicine", health: "Health", "public-health": "Public Health",
+  "self-help": "Wellness", environment: "Environment", weather: "Weather",
+  ai: "Artificial Intelligence", "computer-science": "Technology", "agentic-ai": "Agentic AI",
+};
+
+export default function FeaturedCard({ article }) {
+  const { saveArticle, unsaveArticle, isArticleSaved } = useNewsStore();
+  const saved = isArticleSaved(article.id);
+  const [imgError, setImgError] = useState(false);
+  const color = TOPIC_COLORS[article.category] || "#007AFF";
+  const label = TOPIC_LABELS[article.category] || article.category;
+  const isRecent = Date.now() - article.published_at < 2 * 60 * 60 * 1000;
+
+  // Translation
+  const { texts: translated, isUrdu } = useTranslatedTexts([
+    article.title || "",
+    article.description || "",
+  ]);
+  const displayTitle = translated[0] || article.title;
+  const displayDesc  = translated[1] || article.description;
+
+  const handleSave = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    saved ? unsaveArticle(article.id) : saveArticle(article);
+  };
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      className="card card-hover group relative overflow-hidden"
+    >
+      <a href={article.url} target="_blank" rel="noopener noreferrer">
+        {/* Hero image */}
+        <div className="relative h-72 sm:h-96 overflow-hidden bg-[var(--color-surface2)]">
+          {article.image_url && !imgError ? (
+            <img
+              src={article.image_url} alt={article.title} loading="eager"
+              onError={() => setImgError(true)}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            />
+          ) : (
+            <div
+              className="w-full h-full flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${color}33, ${color}66)` }}
+            >
+              <span className="text-8xl opacity-40">
+                {article.category === "ai" ? "🤖" :
+                 article.category === "sports" ? "🏆" :
+                 article.category === "science" ? "🔬" :
+                 article.category === "environment" ? "🌱" :
+                 article.category === "weather" ? "🌤️" :
+                 article.category === "pakistan" ? "🇵🇰" : "📰"}
+              </span>
+            </div>
+          )}
+
+          {/* Gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+          {/* Overlay content */}
+          <div className={clsx("absolute bottom-0 left-0 right-0 p-5 sm:p-7", isUrdu && "text-right")}>
+            <div className={clsx("flex items-center gap-2 mb-3", isUrdu && "flex-row-reverse justify-end")}>
+              <span
+                className="text-xs font-bold uppercase tracking-widest px-2.5 py-1 rounded-md text-white"
+                style={{ backgroundColor: color }}
+              >
+                {label}
+              </span>
+              {isRecent && (
+                <span className="live-badge">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white inline-block" />
+                  LIVE
+                </span>
+              )}
+              {article.credibility >= 9 && (
+                <span className="text-xs text-white/70">✓ Verified</span>
+              )}
+            </div>
+
+            <h2 className={clsx(
+              "text-xl sm:text-2xl lg:text-3xl font-bold text-white leading-tight mb-2 line-clamp-3",
+              isUrdu && "urdu-text text-white"
+            )}>
+              {displayTitle}
+            </h2>
+
+            {article.description && (
+              <p className={clsx(
+                "text-white/75 text-sm sm:text-base line-clamp-2 leading-relaxed",
+                isUrdu && "urdu-text text-white/75"
+              )}>
+                {displayDesc}
+              </p>
+            )}
+
+            <div className={clsx("flex items-center justify-between mt-4", isUrdu && "flex-row-reverse")}>
+              <div className="flex items-center gap-3 text-white/60 text-xs">
+                <span className="font-semibold text-white/80">{article.source_name}</span>
+                <span className="flex items-center gap-1">
+                  <Clock size={11} />
+                  {formatDistanceToNow(new Date(article.published_at), { addSuffix: true })}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.85 }} onClick={handleSave}
+                  className={clsx(
+                    "p-2 rounded-full transition-colors",
+                    saved ? "bg-brand-blue text-white" : "bg-white/20 text-white hover:bg-white/30"
+                  )}
+                >
+                  {saved ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+                </motion.button>
+                <span className="flex items-center gap-1 text-white/70 text-xs">
+                  <ExternalLink size={12} />
+                  {isUrdu ? "پڑھیں" : "Read"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </a>
+    </motion.article>
+  );
+}

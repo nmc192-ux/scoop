@@ -1,0 +1,116 @@
+/**
+ * Curated X (Twitter) accounts per topic
+ * These are public accounts shown as discovery/follow suggestions
+ */
+export const X_ACCOUNTS = {
+  top: [
+    { handle: "Reuters",       name: "Reuters",          desc: "Global news wire",          verified: true  },
+    { handle: "BBCBreaking",   name: "BBC Breaking",     desc: "Breaking news",             verified: true  },
+    { handle: "AP",            name: "Associated Press", desc: "Non-profit news agency",    verified: true  },
+    { handle: "nytimes",       name: "NY Times",         desc: "All the news fit to print", verified: true  },
+    { handle: "guardian",      name: "The Guardian",     desc: "Independent journalism",    verified: true  },
+    { handle: "CNN",           name: "CNN",              desc: "Cable news network",        verified: true  },
+  ],
+  politics: [
+    { handle: "politico",      name: "POLITICO",         desc: "Politics & policy news",    verified: true  },
+    { handle: "thehill",       name: "The Hill",         desc: "Political news & opinion",  verified: true  },
+    { handle: "NPR",           name: "NPR",              desc: "Public radio journalism",   verified: true  },
+    { handle: "BBCPolitics",   name: "BBC Politics",     desc: "UK & world politics",       verified: true  },
+    { handle: "axios",         name: "Axios",            desc: "Smart brevity news",        verified: true  },
+  ],
+  international: [
+    { handle: "AJEnglish",     name: "Al Jazeera",       desc: "Independent global news",   verified: true  },
+    { handle: "DWNews",        name: "DW News",          desc: "German broadcaster",        verified: true  },
+    { handle: "France24_en",   name: "France 24",        desc: "French intl broadcasting",  verified: true  },
+    { handle: "BBCWorld",      name: "BBC World",        desc: "World news service",        verified: true  },
+    { handle: "ReutersWorld",  name: "Reuters World",    desc: "Global wire service",       verified: true  },
+  ],
+  pakistan: [
+    { handle: "dawn_com",      name: "Dawn",             desc: "Pakistan's leading English paper", verified: true  },
+    { handle: "GeoNews",       name: "Geo News",         desc: "Leading TV news channel",   verified: true  },
+    { handle: "ARYNewsAlerts", name: "ARY News",         desc: "24/7 news channel",         verified: true  },
+    { handle: "etribune",      name: "Express Tribune",  desc: "English-language daily",    verified: true  },
+    { handle: "thenewspk",     name: "The News Intl",    desc: "English daily newspaper",   verified: true  },
+    { handle: "GeoSports",     name: "Geo Sports",       desc: "Pakistan sports coverage",  verified: true  },
+    { handle: "samaaenglish",  name: "SAMAA TV",         desc: "Pakistani TV news",         verified: true  },
+  ],
+  sports: [
+    { handle: "espn",          name: "ESPN",             desc: "Sports entertainment",      verified: true  },
+    { handle: "SkySports",     name: "Sky Sports",       desc: "UK sports broadcaster",     verified: true  },
+    { handle: "BBCSport",      name: "BBC Sport",        desc: "BBC sports coverage",       verified: true  },
+    { handle: "NFL",           name: "NFL",              desc: "National Football League",  verified: true  },
+    { handle: "NBA",           name: "NBA",              desc: "Basketball",                verified: true  },
+  ],
+  science: [
+    { handle: "NASA",          name: "NASA",             desc: "Space & science agency",    verified: true  },
+    { handle: "NewScientist",  name: "New Scientist",    desc: "Science & technology",      verified: true  },
+    { handle: "SciAm",         name: "Scientific American", desc: "Science magazine",       verified: true  },
+    { handle: "nature",        name: "Nature",           desc: "Leading science journal",   verified: true  },
+    { handle: "esahubble",     name: "ESA Hubble",       desc: "Hubble Space Telescope",    verified: true  },
+  ],
+  medicine: [
+    { handle: "WHO",           name: "World Health Org", desc: "Global health leadership",  verified: true  },
+    { handle: "CDCgov",        name: "CDC",              desc: "US disease control",        verified: true  },
+    { handle: "NIH",           name: "NIH",              desc: "National health institutes",verified: true  },
+    { handle: "NEJM",          name: "NEJM",             desc: "New England Journal of Med",verified: true  },
+  ],
+  health: [
+    { handle: "WebMD",         name: "WebMD",            desc: "Health information",        verified: false },
+    { handle: "HarvardHealth", name: "Harvard Health",   desc: "Harvard Med School",        verified: true  },
+    { handle: "Healthline",    name: "Healthline",       desc: "Evidence-based health",     verified: true  },
+    { handle: "MayoClinic",    name: "Mayo Clinic",      desc: "Medical expertise",         verified: true  },
+  ],
+  ai: [
+    { handle: "OpenAI",        name: "OpenAI",           desc: "AI research company",       verified: true  },
+    { handle: "AnthropicAI",   name: "Anthropic",        desc: "AI safety company",         verified: true  },
+    { handle: "ylecun",        name: "Yann LeCun",       desc: "Meta Chief AI Scientist",   verified: true  },
+    { handle: "sama",          name: "Sam Altman",       desc: "OpenAI CEO",                verified: true  },
+    { handle: "GoogleDeepMind",name: "Google DeepMind",  desc: "AI research lab",           verified: true  },
+    { handle: "lexfridman",    name: "Lex Fridman",      desc: "AI researcher & podcaster", verified: true  },
+  ],
+  "computer-science": [
+    { handle: "TechCrunch",    name: "TechCrunch",       desc: "Startup & tech news",       verified: true  },
+    { handle: "Wired",         name: "WIRED",            desc: "Tech & culture magazine",   verified: true  },
+    { handle: "ycombinator",   name: "Y Combinator",     desc: "Startup accelerator",       verified: true  },
+    { handle: "arstechnica",   name: "Ars Technica",     desc: "Tech news & analysis",      verified: true  },
+    { handle: "verge",         name: "The Verge",        desc: "Tech & culture",            verified: true  },
+  ],
+  "agentic-ai": [
+    { handle: "AnthropicAI",   name: "Anthropic",        desc: "Claude & Constitutional AI",verified: true  },
+    { handle: "OpenAI",        name: "OpenAI",           desc: "GPT & agentic systems",     verified: true  },
+    { handle: "LangChainAI",   name: "LangChain",        desc: "LLM orchestration",         verified: true  },
+    { handle: "karpathy",      name: "Andrej Karpathy",  desc: "AI researcher & educator",  verified: true  },
+    { handle: "emollick",      name: "Ethan Mollick",    desc: "AI in business researcher", verified: false },
+  ],
+  environment: [
+    { handle: "guardianeco",   name: "Guardian Env",     desc: "Environmental journalism",  verified: true  },
+    { handle: "CarbonBrief",   name: "Carbon Brief",     desc: "Climate science coverage",  verified: false },
+    { handle: "IPCC_CH",       name: "IPCC",             desc: "Climate change science",    verified: true  },
+    { handle: "GretaThunberg", name: "Greta Thunberg",   desc: "Climate activist",          verified: true  },
+    { handle: "ClimateReality",name: "Climate Reality",  desc: "Al Gore's org",             verified: true  },
+  ],
+  weather: [
+    { handle: "NWS",           name: "Nat'l Weather Svc",desc: "US weather forecasts",      verified: true  },
+    { handle: "weatherchannel",name: "Weather Channel",  desc: "Weather forecasts",         verified: true  },
+    { handle: "NOAAClimate",   name: "NOAA Climate",     desc: "Climate & weather science", verified: true  },
+    { handle: "accuweather",   name: "AccuWeather",      desc: "Global forecasting",        verified: true  },
+  ],
+  "self-help": [
+    { handle: "TonyRobbins",   name: "Tony Robbins",     desc: "Life & business coach",     verified: true  },
+    { handle: "BreneBrown",    name: "Brené Brown",      desc: "Vulnerability researcher",  verified: true  },
+    { handle: "psychtoday",    name: "Psychology Today", desc: "Mental health magazine",    verified: false },
+    { handle: "jamesclear",    name: "James Clear",      desc: "Atomic Habits author",      verified: true  },
+  ],
+  "public-health": [
+    { handle: "WHO",           name: "WHO",              desc: "World Health Organization", verified: true  },
+    { handle: "CDCgov",        name: "CDC",              desc: "Disease control",           verified: true  },
+    { handle: "PAHO_WHO",      name: "PAHO",             desc: "Pan American Health",       verified: true  },
+    { handle: "PubHealthWatch", name: "Public Health", desc: "Public health news",         verified: false },
+  ],
+  local: [
+    { handle: "latimes",       name: "LA Times",         desc: "Los Angeles news",          verified: true  },
+    { handle: "nytimes",       name: "NY Times",         desc: "New York & national news",  verified: true  },
+    { handle: "chicagotribune",name: "Chicago Tribune",  desc: "Chicago news",              verified: true  },
+    { handle: "HoustonChron",  name: "Houston Chronicle",desc: "Houston news",              verified: true  },
+  ],
+};
