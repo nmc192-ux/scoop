@@ -35,6 +35,11 @@ async function fetchHealth() {
   return data;
 }
 
+async function fetchPublicConfig() {
+  const { data } = await api.get("/public-config");
+  return data || {};
+}
+
 // ─── Hooks ────────────────────────────────────────────────────────────────
 
 export function useNews() {
@@ -83,6 +88,15 @@ export function useHealth() {
     staleTime: 30 * 1000,
     refetchInterval: 30 * 1000,
     retry: 1,
+  });
+}
+
+export function usePublicConfig() {
+  return useQuery({
+    queryKey: ["public-config"],
+    queryFn: fetchPublicConfig,
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

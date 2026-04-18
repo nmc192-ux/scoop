@@ -22,11 +22,36 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = process.env.PORT || 4000;
 const app  = express();
+const PRIMARY_SITE_URL = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com").trim().replace(/\/+$/, "");
+const PRIMARY_SITE_HOST = new URL(PRIMARY_SITE_URL).hostname.toLowerCase();
+const REDIRECT_FROM_HOSTS = new Set(
+  (process.env.REDIRECT_FROM_HOSTS || "scoop.urbenofficial.com,www.scoop.urbenofficial.com")
+    .split(",")
+    .map(host => host.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+function getRequestHost(req) {
+  return (req.hostname || req.get("host") || "").toLowerCase().split(":")[0];
+}
+
+function shouldRedirectHost(host) {
+  return Boolean(host) && REDIRECT_FROM_HOSTS.has(host) && host !== PRIMARY_SITE_HOST;
+}
+
+app.set("trust proxy", 1);
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(cors({
-  origin: (process.env.ALLOWED_ORIGINS || "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3001")
+  origin: (process.env.ALLOWED_ORIGINS || [
+    PRIMARY_SITE_URL,
+    `https://www.${PRIMARY_SITE_HOST}`,
+    ...REDIRECT_FROM_HOSTS,
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+  ].join(","))
     .split(",").map(o => o.trim()),
   methods: ["GET","POST"],
   allowedHeaders: ["Content-Type"],
@@ -41,6 +66,11 @@ const limiter = rateLimit({
 app.use("/api/", limiter);
 
 app.use((req, res, next) => {
+  const host = getRequestHost(req);
+  if (shouldRedirectHost(host)) {
+    return res.redirect(301, `${PRIMARY_SITE_URL}${req.originalUrl}`);
+  }
+
   const t = Date.now();
   res.on("finish", () => {
     if (!req.path.includes("health") && !req.path.includes("events"))
@@ -75,6 +105,27 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.get("/api/public-config", (req, res) => {
+  const clientId = process.env.ADSENSE_CLIENT_ID?.trim() || process.env.VITE_ADSENSE_CLIENT_ID?.trim() || "";
+  const publisherId = process.env.ADSENSE_PUBLISHER_ID?.trim()
+    || (clientId.startsWith("ca-pub-") ? clientId.replace(/^ca-/, "") : "");
+  const testMode = String(process.env.ADSENSE_TEST_MODE || process.env.VITE_ADSENSE_TEST_MODE || "").toLowerCase() === "true";
+
+  res.json({
+    adsense: {
+      enabled: Boolean(clientId),
+      clientId,
+      publisherId,
+      testMode,
+      slots: {
+        banner: process.env.ADSENSE_SLOT_BANNER?.trim() || process.env.VITE_ADSENSE_SLOT_BANNER?.trim() || "",
+        sidebar: process.env.ADSENSE_SLOT_SIDEBAR?.trim() || process.env.VITE_ADSENSE_SLOT_SIDEBAR?.trim() || "",
+        inline: process.env.ADSENSE_SLOT_INLINE?.trim() || process.env.VITE_ADSENSE_SLOT_INLINE?.trim() || "",
+      },
+    },
+  });
+});
+
 // SSE live stream
 app.get("/api/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -85,6 +136,19 @@ app.get("/api/events", (req, res) => {
   send("connected", { message: "📡 Connected to NewsFlow stream" });
   const hb = setInterval(() => send("heartbeat", { time: new Date().toISOString(), scheduler: getSchedulerStatus() }), 30000);
   req.on("close", () => clearInterval(hb));
+});
+
+// AdSense requires an ads.txt file on the site root.
+app.get("/ads.txt", (req, res) => {
+  const clientId = process.env.ADSENSE_CLIENT_ID?.trim() || process.env.VITE_ADSENSE_CLIENT_ID?.trim() || "";
+  const publisherId = process.env.ADSENSE_PUBLISHER_ID?.trim()
+    || (clientId.startsWith("ca-pub-") ? clientId.replace(/^ca-/, "") : "");
+
+  if (!publisherId) {
+    return res.status(404).type("text/plain").send("ads.txt not configured");
+  }
+
+  res.type("text/plain").send(`google.com, ${publisherId}, DIRECT, f08c47fec0942fa0\n`);
 });
 
 // ── Serve frontend (production) ──────────────────────────────────────────

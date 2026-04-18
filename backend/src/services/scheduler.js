@@ -65,8 +65,10 @@ export function getSchedulerStatus() {
            sourceCount: RSS_SOURCES.length, videoChannels: YOUTUBE_SOURCES.length };
 }
 
-export function triggerManualRefresh() {
+export async function triggerManualRefresh() {
   logger.info("🔄 Manual refresh (news + videos)");
-  runIngestionCycle();
-  runVideoCycle();
+  return Promise.allSettled([
+    runIngestionCycle(),
+    runVideoCycle(),
+  ]);
 }

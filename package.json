@@ -6,6 +6,8 @@
     "node": ">=18"
   },
   "scripts": {
+    "build:local": "./scripts/build-scoop.sh",
+    "start:local": "./scripts/start-scoop.sh",
     "build": "npm ci --prefix backend && npm ci --prefix frontend && npm run build --prefix frontend",
     "start": "npm start --prefix backend"
   }
