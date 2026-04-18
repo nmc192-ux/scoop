@@ -20,9 +20,20 @@ import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const PORT = process.env.PORT || 4000;
+const PORT = Number.parseInt(process.env.PORT || "", 10) || 3000;
 const app  = express();
-const PRIMARY_SITE_URL = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com").trim().replace(/\/+$/, "");
+function normalizeSiteUrl(input, fallback) {
+  const raw = String(input || fallback).trim().replace(/\/+$/, "");
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+
+  try {
+    return new URL(candidate).toString().replace(/\/+$/, "");
+  } catch {
+    return fallback;
+  }
+}
+
+const PRIMARY_SITE_URL = normalizeSiteUrl(process.env.PRIMARY_SITE_URL, "https://scoopfeeds.com");
 const PRIMARY_SITE_HOST = new URL(PRIMARY_SITE_URL).hostname.toLowerCase();
 const REDIRECT_FROM_HOSTS = new Set(
   (process.env.REDIRECT_FROM_HOSTS || "scoop.urbenofficial.com,www.scoop.urbenofficial.com")
@@ -169,7 +180,11 @@ app.listen(PORT, () => {
   logger.info(`🚀 NewsFlow API → http://localhost:${PORT}`);
   logger.info(`📰 RSS sources: ${RSS_SOURCES.length}  |  📺 YouTube channels: ${YOUTUBE_SOURCES.length}`);
   logger.info(`⏰ Refresh: news every 30 min, videos every 60 min`);
-  startScheduler();
+  if (String(process.env.ENABLE_SCHEDULER ?? "true").toLowerCase() !== "false") {
+    startScheduler();
+  } else {
+    logger.info("⏸️ Scheduler disabled via ENABLE_SCHEDULER=false");
+  }
 });
 
 process.on("SIGTERM", () => { logger.info("Shutting down..."); process.exit(0); });

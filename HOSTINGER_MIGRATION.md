@@ -5,7 +5,7 @@ Scoop is moving from `scoop.urbenofficial.com` to `scoopfeeds.com` on Hostinger.
 ## Primary site
 
 - Primary domain: `https://scoopfeeds.com`
-- Backend listens on `PORT` and defaults to `4000`
+- Backend listens on `PORT` and defaults to `3000`
 - The app should be deployed as a Node.js web app on Hostinger
 
 ## Legacy domain redirect
@@ -25,9 +25,10 @@ This repo now supports that redirect in the backend via:
 1. Deploy the Scoop app to Hostinger under `scoopfeeds.com`.
 2. Set `PRIMARY_SITE_URL=https://scoopfeeds.com`.
 3. Set `REDIRECT_FROM_HOSTS=scoop.urbenofficial.com,www.scoop.urbenofficial.com`.
-4. Set your AdSense and analytics env vars on the Hostinger app.
-5. Confirm `https://scoopfeeds.com` works before switching DNS for the old domain.
-6. Point `scoop.urbenofficial.com` to Hostinger and let the app redirect it.
+4. Keep `ENABLE_SCHEDULER=true` for normal production, or set it to `false` temporarily if you need to isolate a startup problem.
+5. Set your AdSense and analytics env vars on the Hostinger app.
+6. Confirm `https://scoopfeeds.com` works before switching DNS for the old domain.
+7. Point `scoop.urbenofficial.com` to Hostinger and let the app redirect it.
 
 ## Verification checklist
 
