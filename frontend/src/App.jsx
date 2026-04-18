@@ -15,17 +15,20 @@ import MostReadSidebar from "./components/news/MostReadSidebar";
 import WeatherWidget from "./components/news/WeatherWidget";
 import { LoadingHero } from "./components/ui/LoadingCard";
 import { BackendOffline } from "./components/ui/EmptyState";
-import { useNews, useFeatured, useHealth, useRefresh } from "./hooks/useNews";
+import { useNews, useFeatured, useHealth, usePublicConfig, useRefresh } from "./hooks/useNews";
 import { useNewsStore } from "./store/newsStore";
 import ScoopMascot from "./components/mascot/KhabriMascot";
+import { AdSenseBanner, AdSenseSidebar } from "./components/ads/AdSense";
 
 export default function App() {
   const { activeTopics, searchQuery, lastRefreshed, language } = useNewsStore();
   const { data: articles = [], isLoading, error, refetch } = useNews();
   const { data: featured = [], isLoading: featuredLoading } = useFeatured();
   const { data: health, isError: isOffline } = useHealth();
+  const { data: publicConfig } = usePublicConfig();
   const refresh = useRefresh();
   const isUrdu = language === "ur";
+  const adSenseConfig = publicConfig?.adsense;
 
   // SSE live update stream
   useEffect(() => {
@@ -52,6 +55,14 @@ export default function App() {
 
         {/* ── Stats bar ──────────────────────────────────────────────── */}
         <StatsBar />
+
+        <AdSenseBanner
+          slotName="banner"
+          config={adSenseConfig}
+          className="mb-6"
+          label="Sponsored"
+          format="auto"
+        />
 
         {/* ── Mobile-only: Markets at top (collapsed) ─────────────── */}
         <div className="lg:hidden">
@@ -117,6 +128,14 @@ export default function App() {
               onRefresh={() => { refetch(); refresh(); }}
             />
 
+            <AdSenseBanner
+              slotName="inline"
+              config={adSenseConfig}
+              className="mt-6"
+              label="Sponsored"
+              format="auto"
+            />
+
             {/* Empty mascot state */}
             {!isLoading && !error && articles.length === 0 && (
               <motion.div
@@ -140,6 +159,12 @@ export default function App() {
           {/* ── RIGHT: Desktop Sidebar ──────────────────────────────── */}
           <aside className="hidden lg:flex flex-col gap-4 sticky top-20 self-start">
             <WeatherWidget />
+            <AdSenseSidebar
+              slotName="sidebar"
+              config={adSenseConfig}
+              label="Sponsored"
+              format="auto"
+            />
             <MarketStrip />
             <MostReadSidebar articles={articles} />
           </aside>

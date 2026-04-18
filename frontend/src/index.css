@@ -1,9 +1,9 @@
+/* ─── Urdu / Arabic font ─────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* ─── Urdu / Arabic font ─────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap');
 
 /* ─── Base Styles ─────────────────────────────────────────────────────────── */
 @layer base {
