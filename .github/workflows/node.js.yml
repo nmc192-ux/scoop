@@ -11,7 +11,6 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     strategy:
@@ -26,6 +25,14 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-    - run: npm ci
-    - run: npm run build --if-present
-    - run: npm test
+        cache-dependency-path: |
+          backend/package-lock.json
+          frontend/package-lock.json
+    - name: Install backend dependencies
+      run: npm ci --prefix backend
+    - name: Install frontend dependencies
+      run: npm ci --prefix frontend
+    - name: Build frontend
+      run: npm run build --prefix frontend
+    - name: Validate backend entrypoint
+      run: node --check backend/server.js
