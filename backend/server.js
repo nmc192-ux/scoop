@@ -150,13 +150,13 @@ app.get("/api/events", (req, res) => {
 });
 
 // AdSense requires an ads.txt file on the site root.
-app.get("/ads.txt", (req, res) => {
+app.get("/ads.txt", (req, res, next) => {
   const clientId = process.env.ADSENSE_CLIENT_ID?.trim() || process.env.VITE_ADSENSE_CLIENT_ID?.trim() || "";
   const publisherId = process.env.ADSENSE_PUBLISHER_ID?.trim()
     || (clientId.startsWith("ca-pub-") ? clientId.replace(/^ca-/, "") : "");
 
   if (!publisherId) {
-    return res.status(404).type("text/plain").send("ads.txt not configured");
+    return next(); // fall through to static file (frontend/dist/ads.txt)
   }
 
   res.type("text/plain").send(`google.com, ${publisherId}, DIRECT, f08c47fec0942fa0\n`);
