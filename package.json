@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "npm ci --prefix backend && npm ci --prefix frontend && npm run build --prefix frontend",
-    "start": "node backend/server.js"
+    "start": "node --require ./backend/load-env.cjs backend/server.js"
   },
   "dependencies": {
     "express": "^4.18.2"
