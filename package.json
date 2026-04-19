@@ -2,13 +2,13 @@
   "name": "scoop-news",
   "version": "1.0.0",
   "private": true,
-  "engines": {
-    "node": ">=18"
-  },
+  "main": "backend/server.js",
+  "type": "module",
   "scripts": {
-    "build:local": "./scripts/build-scoop.sh",
-    "start:local": "./scripts/start-scoop.sh",
     "build": "npm ci --prefix backend && npm ci --prefix frontend && npm run build --prefix frontend",
     "start": "node backend/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
   }
 }
