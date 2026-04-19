@@ -24,10 +24,10 @@ const CHANNELS = [
   { id: "france24",  permanentId: "Ap-UM1O9RBU", handle: "FRANCE24English"  },
   { id: "geo",       permanentId: "_FwympjOSNE", handle: "geonews"           },
 
-  // No permanent stream — scrape /live page for current event stream
-  { id: "bbc",     handle: "BBCNews",   channelId: "UC16niRr50-MSBwiO3YDb3RA" },
-  { id: "skynews", handle: "SkyNews",   channelId: "UCoMdktPbSTixAyNGwb-UYkQ" },
-  { id: "dw",      handle: "DWNews",    channelId: "UCknLrEdhRCp1aegoMqRaCZg" },
+  // Scrape /live page for current stream; fallback to known permanent ID
+  { id: "bbc",     handle: "BBCNews",   channelId: "UC16niRr50-MSBwiO3YDb3RA", fallbackId: "w_Ma8oQLmSM" },
+  { id: "skynews", handle: "SkyNews",   channelId: "UCoMdktPbSTixAyNGwb-UYkQ", fallbackId: "9Auq9mYxFEE" },
+  { id: "dw",      handle: "DWNews",    channelId: "UCknLrEdhRCp1aegoMqRaCZg", fallbackId: "LuKwFajn37U" },
   { id: "wion",    handle: "WION",      channelId: "UC_gUM8rL-Lrg6O3adPW9K1g" },
   // ARY @handle is bot-blocked — must use channel ID URL
   { id: "ary",     channelId: "UCMmpLL2ucRHAXbNHiCPyIyg" },
@@ -108,6 +108,9 @@ async function getVideoId(ch) {
         if (videoId) break;
       } catch { /* try next */ }
     }
+
+    // If scraping failed, use the known fallback ID
+    if (!videoId && ch.fallbackId) videoId = ch.fallbackId;
   }
 
   cache.set(ch.id, { videoId, expiresAt: Date.now() + TTL_MS });
