@@ -1,11 +1,27 @@
+import path from "path";
+import { fileURLToPath } from "url";
+import { existsSync, readFileSync } from "fs";
+
+// ── Load backend/.env into process.env (no dotenv dep needed) ───────────────
+(function loadEnv() {
+  const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), ".env");
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq < 1) continue;
+    const key = t.slice(0, eq).trim();
+    const val = t.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+    if (key && !(key in process.env)) process.env[key] = val;
+  }
+})();
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
-import path from "path";
-import { fileURLToPath } from "url";
-import { existsSync } from "fs";
 import { logger } from "./src/services/logger.js";
 import { startScheduler, getSchedulerStatus } from "./src/services/scheduler.js";
 import newsRouter      from "./src/routes/news.js";
