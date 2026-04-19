@@ -1,0 +1,26 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:   # allow manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Deploy to Hostinger (scoopfeeds.com)
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_DOMAIN: scoopfeeds.com
+        run: node scripts/deploy-hostinger.mjs
