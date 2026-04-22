@@ -1,28 +1,46 @@
 import cron from "node-cron";
 import { fetchAllSources } from "./rssFetcher.js";
 import { fetchAllYouTube } from "./videoFetcher.js";
+import { enrichBatch } from "./contentEnricher.js";
 import { pruneOldArticles } from "../models/database.js";
 import { logger } from "./logger.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "../config/sources.js";
 
 let isRunning    = false;
 let isVideoRun   = false;
+let isEnrichRun  = false;
 let lastRun      = null;
 let lastVideoRun = null;
+let lastEnrichRun = null;
 let nextRun      = null;
 
 export function startScheduler() {
-  logger.info("⏰ Scheduler initialized — 30 min news, 60 min video");
+  logger.info("⏰ Scheduler initialized — 30 min news, 60 min video, 15 min enrich");
   runIngestionCycle();
   runVideoCycle();
+  setTimeout(runEnrichCycle, 60_000);
   cron.schedule("*/30 * * * *", () => runIngestionCycle());
   cron.schedule("0 * * * *",    () => runVideoCycle());
+  cron.schedule("*/15 * * * *", () => runEnrichCycle());
   cron.schedule("0 3 * * *",    async () => {
     logger.info("🧹 Pruning...");
     const n = pruneOldArticles(7);
     logger.info(`🧹 Pruned ${n} records`);
   });
   updateNextRun();
+}
+
+async function runEnrichCycle() {
+  if (isEnrichRun) return;
+  isEnrichRun = true;
+  lastEnrichRun = new Date().toISOString();
+  try {
+    await enrichBatch({ batchSize: 40, concurrency: 4 });
+  } catch (err) {
+    logger.error("❌ Enrich failed", { error: err.message });
+  } finally {
+    isEnrichRun = false;
+  }
 }
 
 async function runIngestionCycle() {
@@ -61,7 +79,7 @@ function updateNextRun() {
 }
 
 export function getSchedulerStatus() {
-  return { isRunning, isVideoRun, lastRun, lastVideoRun, nextRun,
+  return { isRunning, isVideoRun, isEnrichRun, lastRun, lastVideoRun, lastEnrichRun, nextRun,
            sourceCount: RSS_SOURCES.length, videoChannels: YOUTUBE_SOURCES.length };
 }
 

@@ -104,6 +104,12 @@ router.get("/article/:id", (req, res) => {
   const desc = (article.description || article.title || "").slice(0, 300);
   const title = `${article.title} — Scoop`;
   const published = new Date(article.published_at).toISOString();
+  // Full content if enrichment succeeded (>500 chars); otherwise fall back to description
+  const hasFullContent = article.content && article.content.length > 500;
+  const articleBody = hasFullContent ? article.content : desc;
+  const paragraphs = articleBody
+    ? articleBody.split(/\n\n+/).map(p => p.trim()).filter(Boolean)
+    : [];
 
   const jsonld = {
     "@context": "https://schema.org",
@@ -122,6 +128,7 @@ router.get("/article/:id", (req, res) => {
     "mainEntityOfPage": { "@type": "WebPage", "@id": canonical },
     "articleSection": article.category,
     "url": article.url,
+    ...(hasFullContent ? { "articleBody": article.content } : {}),
   };
 
   res.type("html").send(`<!DOCTYPE html>
@@ -162,6 +169,10 @@ router.get("/article/:id", (req, res) => {
   h1 { font-size: 28px; line-height: 1.25; margin: 12px 0 8px; font-weight: 700; }
   .meta { font-size: 13px; color: #888; margin-bottom: 18px; }
   .desc { font-size: 17px; margin: 0 0 24px; }
+  .content p { font-size: 17px; margin: 0 0 18px; color: #222; }
+  @media (prefers-color-scheme: dark) { .content p { color: #d4d4d4; } }
+  .content { margin-bottom: 28px; }
+  .source-note { font-size: 13px; color: #888; margin: 24px 0 16px; padding: 12px 16px; background: rgba(220,38,38,0.05); border-left: 3px solid #DC2626; border-radius: 4px; }
   .cta { display: inline-block; background: #DC2626; color: #fff; text-decoration: none; padding: 12px 20px; border-radius: 999px; font-weight: 600; font-size: 15px; }
   .cta:hover { background: #b91c1c; }
   .secondary { margin-left: 12px; font-size: 14px; color: #666; text-decoration: none; }
@@ -177,8 +188,11 @@ router.get("/article/:id", (req, res) => {
         <span class="cat">${xmlEscape(article.category || "news")}</span>
         <h1>${xmlEscape(article.title)}</h1>
         <div class="meta">${xmlEscape(article.source_name || "")} · ${new Date(article.published_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</div>
-        ${desc ? `<p class="desc">${xmlEscape(desc)}</p>` : ""}
-        <a class="cta" href="${xmlEscape(article.url)}" target="_blank" rel="noopener noreferrer">Read full story →</a>
+        ${hasFullContent
+          ? `<div class="content">${paragraphs.map(p => `<p>${xmlEscape(p)}</p>`).join("")}</div>
+             <div class="source-note">Originally published by <strong>${xmlEscape(article.source_name || "")}</strong>. Read the full story at the source for the complete article.</div>`
+          : (desc ? `<p class="desc">${xmlEscape(desc)}</p>` : "")}
+        <a class="cta" href="${xmlEscape(article.url)}" target="_blank" rel="noopener noreferrer">Read on ${xmlEscape(article.source_name || "source")} →</a>
         <a class="secondary" href="/">More top stories</a>
       </div>
     </article>
