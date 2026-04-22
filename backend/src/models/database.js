@@ -102,6 +102,55 @@ function initializeSchema(db) {
       created_at  INTEGER NOT NULL
     );
   `);
+
+  // FTS5 full-text search virtual table + sync triggers
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+        title, description, content, source_name,
+        content='articles', content_rowid='rowid', tokenize='porter unicode61'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
+        INSERT INTO articles_fts(rowid, title, description, content, source_name)
+        VALUES (new.rowid, new.title, new.description, new.content, new.source_name);
+      END;
+      CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
+        INSERT INTO articles_fts(articles_fts, rowid, title, description, content, source_name)
+        VALUES('delete', old.rowid, old.title, old.description, old.content, old.source_name);
+      END;
+      CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+        INSERT INTO articles_fts(articles_fts, rowid, title, description, content, source_name)
+        VALUES('delete', old.rowid, old.title, old.description, old.content, old.source_name);
+        INSERT INTO articles_fts(rowid, title, description, content, source_name)
+        VALUES (new.rowid, new.title, new.description, new.content, new.source_name);
+      END;
+    `);
+
+    // Backfill if FTS is empty but articles exist
+    const ftsCount = db.prepare("SELECT COUNT(*) as n FROM articles_fts").get().n;
+    const artCount = db.prepare("SELECT COUNT(*) as n FROM articles").get().n;
+    if (ftsCount === 0 && artCount > 0) {
+      db.exec(`INSERT INTO articles_fts(rowid, title, description, content, source_name)
+               SELECT rowid, title, description, content, source_name FROM articles`);
+      logger.info("FTS5 backfilled", { count: artCount });
+    }
+  } catch (err) {
+    logger.warn("FTS5 init failed, falling back to LIKE search", { error: err.message });
+  }
+}
+
+function ftsAvailable(db) {
+  try {
+    db.prepare("SELECT 1 FROM articles_fts LIMIT 1").get();
+    return true;
+  } catch { return false; }
+}
+
+function escapeFts(q) {
+  // Quote each token for safe FTS5 MATCH: "foo"* "bar"*
+  return q.trim().split(/\s+/).filter(Boolean)
+    .map(t => `"${t.replace(/"/g, '""')}"*`).join(" ");
 }
 
 // ─── Article Operations ────────────────────────────────────────────────────
@@ -119,11 +168,15 @@ export function upsertArticle(article) {
 
 export function getArticles({ category, limit = 50, offset = 0, search = null, minCredibility = 0, source = null }) {
   const db = getDb();
-  let query = `SELECT * FROM articles WHERE credibility >= ?`;
-  const params = [minCredibility];
+  const useFts = search && ftsAvailable(db);
+  let query = useFts
+    ? `SELECT articles.* FROM articles JOIN articles_fts ON articles.rowid = articles_fts.rowid
+       WHERE articles_fts MATCH ? AND credibility >= ?`
+    : `SELECT * FROM articles WHERE credibility >= ?`;
+  const params = useFts ? [escapeFts(search), minCredibility] : [minCredibility];
   if (category && category !== "top") { query += ` AND category = ?`; params.push(category); }
   if (source) { query += ` AND source_name = ?`; params.push(source); }
-  if (search) { query += ` AND (title LIKE ? OR description LIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
+  if (search && !useFts) { query += ` AND (title LIKE ? OR description LIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
 
   // For the mixed "top" feed (no category filter), bucket into 3-hour windows then
   // prioritise by editorial weight so politics/international rise above sports/cars.

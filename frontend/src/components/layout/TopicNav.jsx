@@ -1,5 +1,6 @@
 import { useRef, useEffect } from "react";
 import { motion } from "framer-motion";
+import { Bookmark } from "lucide-react";
 import { useNewsStore } from "../../store/newsStore";
 import { useTopics } from "../../hooks/useNews";
 import clsx from "clsx";
@@ -28,9 +29,11 @@ const TOPIC_COLORS = {
 };
 
 export default function TopicNav() {
-  const { activeTopics, toggleTopic } = useNewsStore();
+  const { activeTopics, toggleTopic, savedArticles } = useNewsStore();
   const { data: topics = [] } = useTopics();
   const scrollRef = useRef(null);
+  const savedActive = activeTopics.includes("saved");
+  const savedCount = savedArticles.length;
 
   // Auto-scroll active topic into view
   useEffect(() => {
@@ -51,6 +54,26 @@ export default function TopicNav() {
             ref={scrollRef}
             className="flex items-center gap-2 py-3 overflow-x-auto hide-scrollbar"
           >
+          {savedCount > 0 && (
+            <motion.button
+              data-active={savedActive}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => toggleTopic("saved")}
+              className={clsx(
+                "topic-pill flex items-center gap-1.5 flex-shrink-0",
+                savedActive ? "topic-pill-active" : "topic-pill-inactive"
+              )}
+              style={savedActive ? { backgroundColor: "#007AFF" } : {}}
+              title={`${savedCount} saved articles`}
+            >
+              <Bookmark size={13} className={savedActive ? "fill-white" : ""} />
+              <span>Saved</span>
+              <span className={clsx(
+                "text-xs px-1.5 py-0.5 rounded-full font-semibold",
+                savedActive ? "bg-white/25 text-white" : "bg-[var(--color-surface2)] text-[var(--color-text-tertiary)]"
+              )}>{savedCount}</span>
+            </motion.button>
+          )}
           {topics.map((topic) => {
             const isActive = activeTopics.includes(topic.id);
             const color = TOPIC_COLORS[topic.id] || "#007AFF";

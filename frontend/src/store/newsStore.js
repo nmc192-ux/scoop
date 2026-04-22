@@ -25,12 +25,12 @@ export const useNewsStore = create(
       setActiveTopics: (topics) => set({ activeTopics: topics }),
       toggleTopic: (topicId) => {
         const current = get().activeTopics;
-        if (topicId === "top") { set({ activeTopics: ["top"] }); return; }
+        if (topicId === "top" || topicId === "saved") { set({ activeTopics: [topicId] }); return; }
         if (current.includes(topicId)) {
-          const next = current.filter(t => t !== topicId && t !== "top");
+          const next = current.filter(t => t !== topicId && t !== "top" && t !== "saved");
           set({ activeTopics: next.length ? next : ["top"] });
         } else {
-          set({ activeTopics: [...current.filter(t => t !== "top"), topicId] });
+          set({ activeTopics: [...current.filter(t => t !== "top" && t !== "saved"), topicId] });
         }
       },
 

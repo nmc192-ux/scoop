@@ -1,18 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "./components/layout/Header";
 import TopicNav from "./components/layout/TopicNav";
 import FeaturedCard from "./components/news/FeaturedCard";
 import NewsGrid from "./components/news/NewsGrid";
 import StatsBar from "./components/news/StatsBar";
-import VideoSection from "./components/news/VideoSection";
-import LiveTVSection from "./components/news/LiveTVSection";
-import XFeedSection from "./components/news/XFeedSection";
+import BreakingBanner from "./components/news/BreakingBanner";
 import MarketStrip from "./components/news/MarketStrip";
-import MagazineSection from "./components/news/MagazineSection";
-import CarsSection from "./components/news/CarsSection";
 import MostReadSidebar from "./components/news/MostReadSidebar";
 import WeatherWidget from "./components/news/WeatherWidget";
+
+const VideoSection    = lazy(() => import("./components/news/VideoSection"));
+const LiveTVSection   = lazy(() => import("./components/news/LiveTVSection"));
+const XFeedSection    = lazy(() => import("./components/news/XFeedSection"));
+const MagazineSection = lazy(() => import("./components/news/MagazineSection"));
+const CarsSection     = lazy(() => import("./components/news/CarsSection"));
+
+const SectionFallback = () => (
+  <div className="h-40 my-8 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] animate-pulse" />
+);
 import { LoadingHero } from "./components/ui/LoadingCard";
 import { BackendOffline } from "./components/ui/EmptyState";
 import { useNews, useFeatured, useHealth, usePublicConfig, useRefresh } from "./hooks/useNews";
@@ -21,8 +27,11 @@ import ScoopMascot from "./components/mascot/KhabriMascot";
 import { AdSenseBanner, AdSenseSidebar, AdSenseUnit } from "./components/ads/AdSense";
 
 export default function App() {
-  const { activeTopics, searchQuery, lastRefreshed, language } = useNewsStore();
-  const { data: articles = [], isLoading, error, refetch } = useNews();
+  const { activeTopics, searchQuery, lastRefreshed, language, savedArticles } = useNewsStore();
+  const showingSaved = activeTopics.includes("saved");
+  const { data: fetchedArticles = [], isLoading: fetchedLoading, error, refetch } = useNews();
+  const articles = showingSaved ? savedArticles : fetchedArticles;
+  const isLoading = showingSaved ? false : fetchedLoading;
   const { data: featured = [], isLoading: featuredLoading } = useFeatured();
   const { data: health, isError: isOffline } = useHealth();
   const { data: publicConfig } = usePublicConfig();
@@ -49,6 +58,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[var(--color-bg)] transition-colors duration-300">
       <Header />
+      <BreakingBanner />
       <TopicNav />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -110,6 +120,8 @@ export default function App() {
                 : "text-lg font-bold text-[var(--color-text)]"}>
                 {searchQuery
                   ? (isUrdu ? `"${searchQuery}" کے نتائج` : `Results for "${searchQuery}"`)
+                  : showingSaved
+                  ? (isUrdu ? "محفوظ خبریں" : "Saved Stories")
                   : activeTopics.includes("top")
                   ? (isUrdu ? "تازہ ترین خبریں" : "Latest Stories")
                   : activeTopics.map(t => t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, " ")).join(" · ")}
@@ -170,20 +182,13 @@ export default function App() {
           </aside>
         </div>
 
-        {/* ── Video Section (compact, below news) ─────────────────── */}
-        <VideoSection />
-
-        {/* ── Live TV (YouTube live streams) ──────────────────────── */}
-        <LiveTVSection />
-
-        {/* ── Curated Reads / Publications ───────────────────────── */}
-        <MagazineSection />
-
-        {/* ── Cars & Automotive ───────────────────────────────────── */}
-        <CarsSection />
-
-        {/* ── X (Twitter) Accounts ───────────────────────────────── */}
-        <XFeedSection />
+        <Suspense fallback={<SectionFallback />}>
+          <VideoSection />
+          <LiveTVSection />
+          <MagazineSection />
+          <CarsSection />
+          <XFeedSection />
+        </Suspense>
 
       </main>
 
