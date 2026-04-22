@@ -5,7 +5,7 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { logger } from "./src/services/logger.js";
 import { startScheduler, getSchedulerStatus } from "./src/services/scheduler.js";
 import newsRouter      from "./src/routes/news.js";
@@ -14,11 +14,28 @@ import translateRouter from "./src/routes/translate.js";
 import marketRouter    from "./src/routes/market.js";
 import weatherRouter    from "./src/routes/weather.js";
 import liveStreamRouter from "./src/routes/liveStream.js";
+import seoRouter         from "./src/routes/seo.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
 import { getDb } from "./src/models/database.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ── Load backend/.env into process.env (won't override vars already set) ──
+{
+  const envFile = path.join(__dirname, ".env");
+  if (existsSync(envFile)) {
+    for (const line of readFileSync(envFile, "utf8").split("\n")) {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      const eq = t.indexOf("=");
+      if (eq < 1) continue;
+      const key = t.slice(0, eq).trim();
+      const val = t.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+      if (key && !(key in process.env)) process.env[key] = val;
+    }
+  }
+}
 
 const PORT = Number.parseInt(process.env.PORT || "", 10) || 3000;
 const app  = express();
@@ -161,6 +178,10 @@ app.get("/ads.txt", (req, res, next) => {
 
   res.type("text/plain").send(`google.com, ${publisherId}, DIRECT, f08c47fec0942fa0\n`);
 });
+
+// ── SEO routes (sitemaps, robots.txt, article detail SSR) ───────────────
+// Must be mounted BEFORE the SPA catch-all so crawlers get XML/HTML, not index.html.
+app.use("/", seoRouter);
 
 // ── Serve frontend (production) ──────────────────────────────────────────
 const distDir = path.join(__dirname, "../frontend/dist");

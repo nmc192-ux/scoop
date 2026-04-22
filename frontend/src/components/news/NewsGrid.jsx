@@ -5,12 +5,18 @@ import NewsCard from "./NewsCard";
 import { useNewsStore } from "../../store/newsStore";
 import { LoadingGrid } from "../ui/LoadingCard";
 import EmptyState from "../ui/EmptyState";
+import { AdSenseUnit } from "../ads/AdSense";
+import { usePublicConfig } from "../../hooks/useNews";
+
+const AD_INTERVAL = 6; // show an in-feed ad after every N cards
 
 const PAGE_SIZE = 18;
 
 export default function NewsGrid({ articles = [], isLoading, error, onRefresh }) {
   const { viewMode } = useNewsStore();
   const [page, setPage] = useState(1);
+  const { data: publicConfig } = usePublicConfig();
+  const adSenseConfig = publicConfig?.adsense;
 
   // Dedup by id
   const dedupedArticles = useMemo(() => {
@@ -50,9 +56,24 @@ export default function NewsGrid({ articles = [], isLoading, error, onRefresh })
             animate={{ opacity: 1 }}
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
           >
-            {visibleArticles.map((article, i) => (
-              <NewsCard key={article.id} article={article} index={i} />
-            ))}
+            {visibleArticles.flatMap((article, i) => {
+              const items = [<NewsCard key={article.id} article={article} index={i} />];
+              if ((i + 1) % AD_INTERVAL === 0 && i < visibleArticles.length - 1) {
+                items.push(
+                  <AdSenseUnit
+                    key={`ad-${i}`}
+                    slotName="inline"
+                    config={adSenseConfig}
+                    label="Sponsored"
+                    format="fluid"
+                    layout="in-article"
+                    minHeight={220}
+                    className="h-full"
+                  />
+                );
+              }
+              return items;
+            })}
           </motion.div>
         ) : (
           <motion.div

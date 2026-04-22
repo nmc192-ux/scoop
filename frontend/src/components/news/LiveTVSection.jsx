@@ -96,12 +96,14 @@ const LIVE_CHANNELS = [
 ];
 
 const ORIGIN = "https://scoopfeeds.com";
-const EMBED_PARAMS = `autoplay=0&rel=0&modestbranding=1&showinfo=0&origin=${ORIGIN}&enablejsapi=1`;
+// youtube-nocookie.com works without third-party cookies → no "Watch on YouTube"
+// block on desktop browsers with cookie restrictions. enablejsapi not needed.
+const EMBED_PARAMS = `autoplay=0&rel=0&modestbranding=1&showinfo=0&origin=${ORIGIN}`;
 
 function getEmbedUrl(ch, liveVideoId) {
   const videoId = liveVideoId || ch.fallbackVideoId;
   if (videoId) {
-    return `https://www.youtube.com/embed/${videoId}?${EMBED_PARAMS}`;
+    return `https://www.youtube-nocookie.com/embed/${videoId}?${EMBED_PARAMS}`;
   }
   // live_stream?channel= is deprecated — return null so we fall to the link card
   return null;

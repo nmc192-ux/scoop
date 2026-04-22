@@ -124,7 +124,30 @@ export function getArticles({ category, limit = 50, offset = 0, search = null, m
   if (category && category !== "top") { query += ` AND category = ?`; params.push(category); }
   if (source) { query += ` AND source_name = ?`; params.push(source); }
   if (search) { query += ` AND (title LIKE ? OR description LIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
-  query += ` ORDER BY published_at DESC LIMIT ? OFFSET ?`;
+
+  // For the mixed "top" feed (no category filter), bucket into 3-hour windows then
+  // prioritise by editorial weight so politics/international rise above sports/cars.
+  // Single-category views use plain recency (all articles share the same priority).
+  const isMixedFeed = !category || category === "top";
+  query += isMixedFeed
+    ? ` ORDER BY (published_at / 10800000) DESC,
+        CASE category
+          WHEN 'top'          THEN 1
+          WHEN 'politics'     THEN 2
+          WHEN 'pakistan'     THEN 3
+          WHEN 'international'THEN 4
+          WHEN 'science'      THEN 5
+          WHEN 'medicine'     THEN 5
+          WHEN 'public-health'THEN 5
+          WHEN 'health'       THEN 6
+          WHEN 'environment'  THEN 7
+          WHEN 'self-help'    THEN 8
+          WHEN 'sports'       THEN 9
+          WHEN 'cars'         THEN 10
+          ELSE 6
+        END ASC,
+        credibility DESC, published_at DESC LIMIT ? OFFSET ?`
+    : ` ORDER BY published_at DESC LIMIT ? OFFSET ?`;
   params.push(limit, offset);
   return db.prepare(query).all(...params);
 }
@@ -132,7 +155,25 @@ export function getArticles({ category, limit = 50, offset = 0, search = null, m
 export function getFeaturedArticles(limit = 7) {
   return getDb().prepare(`
     SELECT * FROM articles WHERE credibility >= 8
-    ORDER BY published_at DESC, credibility DESC LIMIT ?
+    ORDER BY
+      (published_at / 10800000) DESC,
+      CASE category
+        WHEN 'top'          THEN 1
+        WHEN 'politics'     THEN 2
+        WHEN 'pakistan'     THEN 3
+        WHEN 'international'THEN 4
+        WHEN 'science'      THEN 5
+        WHEN 'medicine'     THEN 5
+        WHEN 'public-health'THEN 5
+        WHEN 'health'       THEN 6
+        WHEN 'environment'  THEN 7
+        WHEN 'self-help'    THEN 8
+        WHEN 'sports'       THEN 9
+        WHEN 'cars'         THEN 10
+        ELSE 6
+      END ASC,
+      credibility DESC, published_at DESC
+    LIMIT ?
   `).all(limit);
 }
 

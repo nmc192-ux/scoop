@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "./components/layout/Header";
 import TopicNav from "./components/layout/TopicNav";
@@ -18,7 +18,7 @@ import { BackendOffline } from "./components/ui/EmptyState";
 import { useNews, useFeatured, useHealth, usePublicConfig, useRefresh } from "./hooks/useNews";
 import { useNewsStore } from "./store/newsStore";
 import ScoopMascot from "./components/mascot/KhabriMascot";
-import { AdSenseBanner, AdSenseSidebar } from "./components/ads/AdSense";
+import { AdSenseBanner, AdSenseSidebar, AdSenseUnit } from "./components/ads/AdSense";
 
 export default function App() {
   const { activeTopics, searchQuery, lastRefreshed, language } = useNewsStore();
@@ -216,6 +216,9 @@ export default function App() {
         </div>
       </footer>
 
+      {/* ── Sticky mobile anchor ad (bottom, dismissible) ──────────── */}
+      <MobileAnchorAd config={adSenseConfig} />
+
       {/* ── Refresh toast ──────────────────────────────────────────── */}
       <AnimatePresence>
         {lastRefreshed && (
@@ -231,6 +234,32 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/* ── Sticky mobile bottom anchor ad ─────────────────────────────────────── */
+function MobileAnchorAd({ config }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  if (!config?.enabled || !config?.slots?.banner) return null;
+  return (
+    <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--color-bg)]/95 backdrop-blur border-t border-[var(--color-border)] shadow-lg">
+      <button
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss ad"
+        className="absolute -top-3 right-2 w-6 h-6 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center shadow-md"
+      >×</button>
+      <div className="px-2 py-1">
+        <AdSenseUnit
+          slotName="banner"
+          config={config}
+          label="Ad"
+          format="auto"
+          minHeight={60}
+          style={{ maxHeight: 100 }}
+        />
+      </div>
     </div>
   );
 }
