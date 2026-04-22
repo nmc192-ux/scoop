@@ -23,7 +23,7 @@ const LIVE_CHANNELS = [
     name:            "BBC News",
     flag:            "🇬🇧",
     color:           "#BB1919",
-    fallbackVideoId: null,
+    fallbackVideoId: "w_Ma8oQLmSM", // BBC News 24/7 live stream
     channelId:       "UC16niRr50-MSBwiO3YDb3RA",
     ytUrl:           "https://www.youtube.com/@BBCNews/live",
   },
@@ -32,7 +32,7 @@ const LIVE_CHANNELS = [
     name:            "Sky News",
     flag:            "🇬🇧",
     color:           "#E8000D",
-    fallbackVideoId: "9lFYDRvw7ns",
+    fallbackVideoId: "9Auq9mYxFEE", // Sky News 24/7 live stream
     ytUrl:           "https://www.youtube.com/@SkyNews/live",
   },
   {
@@ -40,7 +40,7 @@ const LIVE_CHANNELS = [
     name:            "DW News",
     flag:            "🇩🇪",
     color:           "#0000A0",
-    fallbackVideoId: "LuKwFajn37U",
+    fallbackVideoId: "LuKwFajn37U", // DW News 24/7 live stream
     ytUrl:           "https://www.youtube.com/@DWNews/live",
   },
   {
@@ -48,7 +48,7 @@ const LIVE_CHANNELS = [
     name:            "France 24",
     flag:            "🇫🇷",
     color:           "#003F8F",
-    fallbackVideoId: "Ap-UM1O9RBU",
+    fallbackVideoId: "Ap-UM1O9RBU", // France 24 24/7 live stream
     ytUrl:           "https://www.youtube.com/c/FRANCE24English/live",
   },
 
@@ -95,12 +95,18 @@ const LIVE_CHANNELS = [
   },
 ];
 
+const ORIGIN = "https://scoopfeeds.com";
+// youtube-nocookie.com works without third-party cookies → no "Watch on YouTube"
+// block on desktop browsers with cookie restrictions. enablejsapi not needed.
+const EMBED_PARAMS = `autoplay=0&rel=0&modestbranding=1&showinfo=0&origin=${ORIGIN}`;
+
 function getEmbedUrl(ch, liveVideoId) {
   const videoId = liveVideoId || ch.fallbackVideoId;
   if (videoId) {
-    return `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0&modestbranding=1&showinfo=0`;
+    return `https://www.youtube-nocookie.com/embed/${videoId}?${EMBED_PARAMS}`;
   }
-  return `https://www.youtube.com/embed/live_stream?channel=${ch.channelId}&autoplay=0&rel=0&modestbranding=1&showinfo=0`;
+  // live_stream?channel= is deprecated — return null so we fall to the link card
+  return null;
 }
 
 /* ─── Pulsing red dot ──────────────────────────────────────────────────────── */
@@ -159,14 +165,16 @@ function NoEmbedCard({ ch }) {
 
 /* ─── Main component ─────────────────────────────────────────────────────────── */
 export default function LiveTVSection() {
-  const [isOpen,     setIsOpen]     = useState(false);
+  const [isOpen,     setIsOpen]     = useState(true);
   const [activeId,   setActiveId]   = useState(LIVE_CHANNELS[0].id);
   const [loadFailed, setLoadFailed] = useState({});
 
   const { streams } = useLiveStreams();
 
   const activeChannel = LIVE_CHANNELS.find(c => c.id === activeId) || LIVE_CHANNELS[0];
-  const embedUrl      = activeChannel.noEmbed ? null : getEmbedUrl(activeChannel, streams[activeChannel.id]);
+  const embedUrl      = (!activeChannel.noEmbed)
+    ? getEmbedUrl(activeChannel, streams[activeChannel.id])
+    : null;
 
   const handleChannelChange = (id) => {
     setActiveId(id);
@@ -245,7 +253,7 @@ export default function LiveTVSection() {
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              {activeChannel.noEmbed ? (
+              {(activeChannel.noEmbed || !embedUrl) ? (
                 <NoEmbedCard ch={activeChannel} />
               ) : !loadFailed[activeId] ? (
                 <div className="card overflow-hidden">
