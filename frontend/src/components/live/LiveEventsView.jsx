@@ -15,8 +15,8 @@
  */
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ArrowLeft, ExternalLink, RefreshCw } from "lucide-react";
-import { useLiveEvents, useEventDossier } from "../../hooks/useLiveEvents";
+import { ChevronRight, ArrowLeft, ExternalLink, RefreshCw, TrendingUp } from "lucide-react";
+import { useLiveEvents, useEventDossier, useEventCandidates } from "../../hooks/useLiveEvents";
 
 function timeAgo(iso) {
   if (!iso) return "—";
@@ -32,6 +32,7 @@ function timeAgo(iso) {
 export default function LiveEventsView() {
   const [selectedId, setSelectedId] = useState(null);
   const { data: events = [], isLoading } = useLiveEvents();
+  const { data: candidates = [] } = useEventCandidates();
 
   if (selectedId) {
     return <EventDossier id={selectedId} onBack={() => setSelectedId(null)} />;
@@ -92,6 +93,34 @@ export default function LiveEventsView() {
         </div>
       )}
 
+      {candidates.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp size={14} className="text-amber-500" />
+            <h3 className="text-sm font-bold uppercase tracking-wide text-[var(--color-text)]">
+              Emerging
+            </h3>
+            <span className="text-[11px] text-[var(--color-text-tertiary)]">
+              Spiking in the feed — candidates for a new dossier
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {candidates.slice(0, 8).map((c, i) => (
+              <div
+                key={i}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-surface2)] border border-[var(--color-border)] text-xs"
+                title={`${c.articles} articles across ${c.sources} outlets · avg authenticity ${c.avgAuthenticity}/10`}
+              >
+                <span className="font-semibold">{c.phrase}</span>
+                <span className="text-[var(--color-text-tertiary)]">
+                  {c.articles}×
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="text-[11px] text-[var(--color-text-tertiary)] mt-6 text-center max-w-xl mx-auto">
         Scoop picks global events from geopolitics and breaking-news signals, synthesizes
         timestamped briefs from trusted outlets (Al Jazeera, Reuters, AP, BBC…), and layers
@@ -121,6 +150,7 @@ function EventDossier({ id, onBack }) {
   }
 
   const metrics = evt.metrics || {};
+  const provenance = metrics._provenance;
   const metricTiles = [
     { key: "casualties",     label: "Reported casualties",   icon: "🕊️" },
     { key: "economicLoss",   label: "Economic losses (est.)", icon: "💸" },
@@ -213,6 +243,36 @@ function EventDossier({ id, onBack }) {
             ))}
           </AnimatePresence>
         </ol>
+      )}
+
+      {provenance && (
+        <div className="mt-8 pt-4 border-t border-[var(--color-border)]">
+          <h4 className="text-[11px] uppercase tracking-wide font-bold text-[var(--color-text-tertiary)] mb-2">
+            Sources used for this dossier
+          </h4>
+          <div className="flex flex-wrap gap-1.5">
+            {(provenance.outlets || []).map((o, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-surface2)] border border-[var(--color-border)]"
+                title={`Media authenticity score: ${o.score}/10`}
+              >
+                {o.name}
+                <span className="text-[var(--color-text-tertiary)] font-mono">
+                  {Number(o.score).toFixed(1)}
+                </span>
+              </span>
+            ))}
+          </div>
+          <p className="text-[10px] text-[var(--color-text-tertiary)] mt-2">
+            {provenance.llmUsed
+              ? "AI synthesis: Gemini 1.5 Flash"
+              : "AI synthesis: off (deterministic headline timeline)"}
+            {provenance.socialEnabled
+              ? ` · ${provenance.socialPosts} social posts considered (X + Truth Social via RSSHub)`
+              : " · social signals: off"}
+          </p>
+        </div>
       )}
     </div>
   );

@@ -14,6 +14,8 @@ import express from "express";
 import { listLiveEvents, getLiveEvent } from "../models/database.js";
 import { LIVE_EVENTS, getEventConfig } from "../config/liveEvents.js";
 import { refreshEvent } from "../services/liveEvents.js";
+import { discoverCandidates } from "../services/eventDiscovery.js";
+import { isRsshubEnabled } from "../services/socialSignals.js";
 import { logger } from "../services/logger.js";
 
 const router = express.Router();
@@ -76,6 +78,29 @@ router.get("/:id", (req, res) => {
   } catch (err) {
     logger.error("Error fetching live event", { error: err.message });
     res.status(500).json({ success: false, error: "Failed to fetch live event" });
+  }
+});
+
+// GET /api/live-events/_/candidates
+// Returns entities in the article stream that are spiking but aren't yet
+// tracked as seed events. Phase D will promote these automatically; for
+// now it's a read-only signal for editors / the UI "emerging" strip.
+router.get("/_/candidates", (req, res) => {
+  try {
+    const windowHours = Math.min(parseInt(req.query.windowHours || "24", 10), 72);
+    const candidates = discoverCandidates({ windowHours, minArticles: 5, limit: 10 });
+    res.json({
+      success: true,
+      data: candidates,
+      meta: {
+        windowHours,
+        rsshubEnabled: isRsshubEnabled(),
+        geminiEnabled: Boolean(process.env.GEMINI_API_KEY),
+      },
+    });
+  } catch (err) {
+    logger.error("Error computing event candidates", { error: err.message });
+    res.status(500).json({ success: false, error: "Failed to compute candidates" });
   }
 });
 

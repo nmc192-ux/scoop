@@ -43,6 +43,22 @@ export const LIVE_EVENTS = [
       "Reuters", "BBC News", "Associated Press", "AP",
       "The Times of Israel",
     ],
+    topicBeat: "middle-east",   // drives media-authenticity overrides
+    // X / Truth Social handles relevant to this event. Ingested via the
+    // self-hosted RSSHub instance (RSSHUB_URL). Empty safely → no social
+    // section in the dossier.
+    xHandles: [
+      "AJEnglish",      // Al Jazeera English
+      "Reuters",
+      "BBCBreaking",
+      "AP",
+      "netanyahu",      // primary source
+      "IDF",
+      "khamenei_ir",    // primary source
+    ],
+    truthSocialHandles: [
+      "realDonaldTrump",
+    ],
     ceasefire: null, // set to an ISO date like "2026-05-01T00:00:00Z" when active
     metrics: [
       { id: "casualties",     label: "Reported casualties",  icon: "🕊️" },

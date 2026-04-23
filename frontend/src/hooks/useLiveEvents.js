@@ -16,6 +16,21 @@ export function useLiveEvents() {
   });
 }
 
+// Emerging event candidates — entities spiking in the feed that aren't
+// yet tracked as seed events. Used to render an "Emerging" strip at the
+// top of the Live tab.
+export function useEventCandidates() {
+  return useQuery({
+    queryKey: ["live-event-candidates"],
+    queryFn: async () => {
+      const { data } = await api.get("/live-events/_/candidates");
+      return data.data || [];
+    },
+    staleTime: 10 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
+  });
+}
+
 // Full dossier for one event (timestamped brief + live metrics).
 export function useEventDossier(id) {
   return useQuery({

@@ -24,6 +24,8 @@ import {
   findArticlesForEvent,
   upsertLiveEvent,
 } from "../models/database.js";
+import { rankByAuthenticity, scoreFor } from "../config/mediaAuthenticity.js";
+import { fetchEventSocialSignals } from "./socialSignals.js";
 import { logger } from "./logger.js";
 
 const GEMINI_MODEL = "gemini-1.5-flash-latest";
@@ -90,20 +92,30 @@ function buildCeasefireTile(ceasefireIso) {
 
 // ─── Gemini synthesizer ────────────────────────────────────────────────────
 
-function buildPrompt(event, articles) {
+function buildPrompt(event, articles, socialPosts = []) {
   const items = articles.map((a, i) => {
     const when = new Date(a.published_at).toISOString();
     const desc = (a.description || "").slice(0, 400);
     return `[${i + 1}] ${when} — ${a.source_name} — ${a.title}\n    ${desc}\n    URL: ${a.url}`;
   }).join("\n\n");
 
+  const socialBlock = socialPosts.length > 0
+    ? "\n\nPrimary-source social posts (treat as leads, not verified facts — cite with the (social) suffix):\n" +
+      socialPosts.slice(0, 10).map((p, i) => {
+        const when = new Date(p.published_at).toISOString();
+        const desc = (p.description || "").slice(0, 240);
+        return `[S${i + 1}] ${when} — ${p.source_name} — ${p.title}\n    ${desc}`;
+      }).join("\n\n")
+    : "";
+
   return `You are Scoop's live-events desk editor. Build a neutral, timestamped briefing on the "${event.title}".
 
 Ground rules:
 - Only use facts supported by the sources below. If a fact appears in just one source, flag it with "(single-source)".
+- Primary-source social posts (S-prefixed) are leads only — a point that rests on a social post alone must say "(social)" and must not be stated as a confirmed fact.
 - Order points newest first.
 - Each point: 1-2 short sentences, specific, factual. No speculation, no adjectives like "shocking".
-- Cite 1-3 source numbers per point as sourceIndices (1-based).
+- Cite 1-3 source numbers per point as sourceIndices (1-based). Use "S" prefix for social.
 - Also return rough metric estimates if the sources support them. Use null when unknown — NEVER guess.
 
 Return ONLY valid JSON with this exact shape:
@@ -119,16 +131,16 @@ Return ONLY valid JSON with this exact shape:
 }
 
 Sources:
-${items}`;
+${items}${socialBlock}`;
 }
 
-async function synthesizeWithGemini(event, articles) {
+async function synthesizeWithGemini(event, articles, socialPosts = []) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  if (articles.length === 0) return null;
+  if (articles.length === 0 && socialPosts.length === 0) return null;
 
   try {
-    const prompt = buildPrompt(event, articles);
+    const prompt = buildPrompt(event, articles, socialPosts);
     const { data } = await axios.post(
       GEMINI_ENDPOINT(key),
       {
@@ -165,14 +177,28 @@ async function synthesizeWithGemini(event, articles) {
 
 // Deterministic fallback — no LLM, no hallucination. Just the most recent
 // headlines from preferred sources, presented as a timeline.
-function fallbackSynthesize(event, articles) {
-  const brief = articles.slice(0, 12).map((a) => ({
+function fallbackSynthesize(event, articles, socialPosts = []) {
+  const articleBrief = articles.slice(0, 10).map((a) => ({
     ts: new Date(a.published_at).toISOString(),
     text: a.title,
     sources: [{ name: a.source_name, url: a.url }],
   }));
+  // Add top-3 social signals marked as primary-source leads so the
+  // audience sees them but the UI can visually distinguish them.
+  const socialBrief = socialPosts.slice(0, 3).map((p) => ({
+    ts: new Date(p.published_at).toISOString(),
+    text: `${p.title} (social — lead, not verified)`,
+    sources: [{ name: p.source_name, url: p.url }],
+  }));
+  const brief = [...articleBrief, ...socialBrief].sort(
+    (a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()
+  );
+  const outletCount = new Set(articles.slice(0, 10).map((a) => a.source_name)).size;
   const summary = articles.length > 0
-    ? `${articles.length} recent updates from ${new Set(articles.slice(0, 10).map((a) => a.source_name)).size} outlets`
+    ? `${articles.length} recent updates from ${outletCount} outlets` +
+      (socialPosts.length ? ` + ${socialPosts.length} social posts` : "")
+    : socialPosts.length > 0
+    ? `No mainstream articles yet — ${socialPosts.length} social posts pending verification`
     : "No recent updates found in ingested feeds yet";
   return { summary, brief, metrics: {} };
 }
@@ -180,15 +206,27 @@ function fallbackSynthesize(event, articles) {
 // ─── Per-event refresh ─────────────────────────────────────────────────────
 
 export async function refreshEvent(eventConfig) {
-  const articles = findArticlesForEvent({
+  const rawArticles = findArticlesForEvent({
     keywords: eventConfig.keywords,
     preferredSources: eventConfig.preferredSources,
-    limit: 30,
+    limit: 40,
   });
 
+  // Re-rank by media-authenticity score (topic/region-aware) so the
+  // most trusted outlets for this beat feed into the LLM prompt first.
+  const articles = rankByAuthenticity(rawArticles, {
+    topic: eventConfig.topicBeat,
+    region: eventConfig.countryCode,
+  }).slice(0, 30);
+
+  // Pull X / Truth Social posts if RSSHub is configured. These are
+  // passed to the synthesizer as additional low-trust sources (LLM is
+  // told to treat them as primary-source signals, not wire reports).
+  const social = await fetchEventSocialSignals(eventConfig);
+
   // Try LLM first, fall back to deterministic brief.
-  let synth = await synthesizeWithGemini(eventConfig, articles);
-  if (!synth) synth = fallbackSynthesize(eventConfig, articles);
+  let synth = await synthesizeWithGemini(eventConfig, articles, social.posts);
+  if (!synth) synth = fallbackSynthesize(eventConfig, articles, social.posts);
 
   // Merge LLM metrics with live fetchers.
   const brent = await fetchBrentCrude();
@@ -203,6 +241,22 @@ export async function refreshEvent(eventConfig) {
     ? new Date(eventConfig.ceasefire).getTime()
     : null;
 
+  // Attach a provenance footer — which outlets fed this dossier and
+  // their authenticity scores. Useful for the "why should I trust
+  // this?" panel in the UI + a debug aid for us.
+  const provenance = {
+    outlets: Array.from(new Set(articles.map((a) => a.source_name))).slice(0, 12).map((name) => ({
+      name,
+      score: scoreFor(name, {
+        topic: eventConfig.topicBeat,
+        region: eventConfig.countryCode,
+      }),
+    })),
+    socialEnabled: social.enabled,
+    socialPosts: social.posts.length,
+    llmUsed: Boolean(process.env.GEMINI_API_KEY),
+  };
+
   upsertLiveEvent({
     id: eventConfig.id,
     title: eventConfig.title,
@@ -211,13 +265,18 @@ export async function refreshEvent(eventConfig) {
     status: eventConfig.status,
     region: eventConfig.region,
     brief: synth.brief,
-    metrics,
+    metrics: { ...metrics, _provenance: provenance },
     summary: synth.summary,
     updated_at: Date.now(),
     ceasefire_at: ceasefireAt,
   });
 
-  return { id: eventConfig.id, briefCount: synth.brief.length, articlesUsed: articles.length };
+  return {
+    id: eventConfig.id,
+    briefCount: synth.brief.length,
+    articlesUsed: articles.length,
+    socialUsed: social.posts.length,
+  };
 }
 
 export async function refreshAllEvents() {
