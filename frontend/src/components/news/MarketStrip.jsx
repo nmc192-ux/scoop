@@ -315,12 +315,13 @@ export default function MarketStrip({ defaultOpen = true }) {
 
   if (isError && !market) return null;
 
-  const currencies  = market?.currencies  ?? {};
-  const indices     = market?.indices     ?? [];
-  const commodities = market?.commodities ?? [];
-  const metals      = market?.metals      ?? {};
-  const crypto      = market?.crypto      ?? [];
-  const fearGreed   = market?.fearGreed   ?? null;
+  const currencies       = market?.currencies       ?? {};
+  const indices          = market?.indices          ?? [];
+  const commodities      = market?.commodities      ?? [];
+  const commodityIndices = market?.commodityIndices ?? [];
+  const metals           = market?.metals           ?? {};
+  const crypto           = market?.crypto           ?? [];
+  const fearGreed        = market?.fearGreed        ?? null;
   const updatedAt   = market?.updatedAt;
   const usdRate     = currencies.USD?.rate;
   const currencyList = Object.values(currencies).filter((c) => c.rate != null);
@@ -329,7 +330,13 @@ export default function MarketStrip({ defaultOpen = true }) {
   const q = query.trim().toLowerCase();
   const filterFx   = currencyList.filter((c) => !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
   const filterIdx  = indices.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sym.toLowerCase().includes(q));
-  const filterComm = commodities.filter((c) => !q || c.name.toLowerCase().includes(q));
+  const filterComm = commodities.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.group || "").toLowerCase().includes(q));
+  const filterCIdx = commodityIndices.filter((c) => !q || c.name.toLowerCase().includes(q) || c.sym.toLowerCase().includes(q));
+  // Group commodities by category for the Commodities tab
+  const commGroupOrder = ["Energy", "Metals", "Grains", "Softs", "Livestock"];
+  const commByGroup = commGroupOrder
+    .map((g) => ({ group: g, items: filterComm.filter((c) => c.group === g) }))
+    .filter((x) => x.items.length > 0);
   const filterCry  = crypto.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.symbol || "").toLowerCase().includes(q));
 
   return (
@@ -458,13 +465,27 @@ export default function MarketStrip({ defaultOpen = true }) {
                 )}
 
                 {activeTab === "commodities" && (
-                  <motion.div key="commodities" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 4 }} transition={{ duration: 0.15 }}>
-                    {isLoading ? <GridSkeleton cols={3} rows={2} /> : filterComm.length > 0 ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                        {filterComm.map((c) => <CommodityCard key={c.sym} item={c} />)}
-                      </div>
+                  <motion.div key="commodities" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 4 }} transition={{ duration: 0.15 }} className="space-y-5">
+                    {isLoading ? <GridSkeleton cols={3} rows={2} /> : commByGroup.length > 0 ? (
+                      commByGroup.map(({ group, items }) => (
+                        <div key={group}>
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)] mb-2">{group}</h4>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                            {items.map((c) => <CommodityCard key={c.sym} item={c} />)}
+                          </div>
+                        </div>
+                      ))
                     ) : (
                       <p className="text-sm text-[var(--color-text-tertiary)] text-center py-4">No commodity data available</p>
+                    )}
+
+                    {filterCIdx.length > 0 && (
+                      <div>
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)] mb-2">Commodity Indices (ETFs)</h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {filterCIdx.map((c) => <CommodityCard key={c.sym} item={c} />)}
+                        </div>
+                      </div>
                     )}
                   </motion.div>
                 )}

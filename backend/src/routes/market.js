@@ -158,11 +158,38 @@ const INDICES = [
 ];
 
 const COMMODITIES = [
-  { sym: "CL=F", stooq: "cl.f", name: "Crude Oil (WTI)",  unit: "bbl",   icon: "🛢️", currency: "USD" },
-  { sym: "NG=F", stooq: "ng.f", name: "Natural Gas",      unit: "MMBtu", icon: "🔥",  currency: "USD" },
-  { sym: "HG=F", stooq: "hg.f", name: "Copper",           unit: "lb",    icon: "🟤",  currency: "USD" },
-  { sym: "ZC=F", stooq: "zc.f", name: "Corn",             unit: "bu",    icon: "🌽",  currency: "USD" },
-  { sym: "ZW=F", stooq: "zw.f", name: "Wheat",            unit: "bu",    icon: "🌾",  currency: "USD" },
+  // Energy
+  { sym: "CL=F", stooq: "cl.f", name: "Crude Oil (WTI)",  unit: "bbl",   icon: "🛢️", currency: "USD", group: "Energy" },
+  { sym: "BZ=F", stooq: "cb.f", name: "Brent Crude",      unit: "bbl",   icon: "🛢️", currency: "USD", group: "Energy" },
+  { sym: "NG=F", stooq: "ng.f", name: "Natural Gas",      unit: "MMBtu", icon: "🔥",  currency: "USD", group: "Energy" },
+  { sym: "HO=F", stooq: "ho.f", name: "Heating Oil",      unit: "gal",   icon: "⛽",  currency: "USD", group: "Energy" },
+  { sym: "RB=F", stooq: "rb.f", name: "RBOB Gasoline",    unit: "gal",   icon: "⛽",  currency: "USD", group: "Energy" },
+  // Industrial metal (non-precious)
+  { sym: "HG=F", stooq: "hg.f", name: "Copper",           unit: "lb",    icon: "🟤",  currency: "USD", group: "Metals" },
+  // Grains
+  { sym: "ZC=F", stooq: "zc.f", name: "Corn",             unit: "bu",    icon: "🌽",  currency: "USD", group: "Grains" },
+  { sym: "ZW=F", stooq: "zw.f", name: "Wheat",            unit: "bu",    icon: "🌾",  currency: "USD", group: "Grains" },
+  { sym: "ZS=F", stooq: "zs.f", name: "Soybeans",         unit: "bu",    icon: "🌱",  currency: "USD", group: "Grains" },
+  // Softs
+  { sym: "KC=F", stooq: "kc.f", name: "Coffee",           unit: "lb",    icon: "☕",  currency: "USD", group: "Softs" },
+  { sym: "SB=F", stooq: "sb.f", name: "Sugar",            unit: "lb",    icon: "🍬",  currency: "USD", group: "Softs" },
+  { sym: "CC=F", stooq: "cc.f", name: "Cocoa",            unit: "mt",    icon: "🍫",  currency: "USD", group: "Softs" },
+  { sym: "CT=F", stooq: "ct.f", name: "Cotton",           unit: "lb",    icon: "🧺",  currency: "USD", group: "Softs" },
+  // Livestock
+  { sym: "LE=F", stooq: "le.f", name: "Live Cattle",      unit: "lb",    icon: "🐄",  currency: "USD", group: "Livestock" },
+  { sym: "HE=F", stooq: "he.f", name: "Lean Hogs",        unit: "lb",    icon: "🐖",  currency: "USD", group: "Livestock" },
+];
+
+// Commodity indices (via broad ETFs, since stooq lacks direct index symbols)
+const COMMODITY_INDICES = [
+  { sym: "DBC",  stooq: "dbc.us", name: "DB Commodity Index",      note: "Broad basket (DBC ETF)",      icon: "📊", currency: "USD" },
+  { sym: "GSG",  stooq: "gsg.us", name: "S&P GSCI Commodity",      note: "Energy-heavy (GSG ETF)",      icon: "📊", currency: "USD" },
+  { sym: "DJP",  stooq: "djp.us", name: "Bloomberg Commodity",     note: "Diversified (DJP ETN)",       icon: "📊", currency: "USD" },
+  { sym: "BNO",  stooq: "bno.us", name: "Brent Oil Fund",          note: "Brent proxy (BNO ETF)",       icon: "🛢️", currency: "USD" },
+  { sym: "UNG",  stooq: "ung.us", name: "Natural Gas Fund",        note: "UNG ETF",                     icon: "🔥", currency: "USD" },
+  { sym: "UGA",  stooq: "uga.us", name: "Gasoline Fund",           note: "UGA ETF",                     icon: "⛽", currency: "USD" },
+  { sym: "DBA",  stooq: "dba.us", name: "Agriculture Fund",        note: "DBA ETF",                     icon: "🌾", currency: "USD" },
+  { sym: "PDBC", stooq: "pdbc.us",name: "Optimum Yield Commodity", note: "PDBC ETF",                    icon: "📊", currency: "USD" },
 ];
 
 const METALS = [
@@ -260,11 +287,12 @@ router.get("/", async (req, res) => {
       return res.json({ success: true, data: cache.data, cached: true });
     }
 
-    const [fxR, idxR, psxR, commR, metR, cryR, fgR] = await Promise.allSettled([
+    const [fxR, idxR, psxR, commR, cidxR, metR, cryR, fgR] = await Promise.allSettled([
       fetchFxRates(),
       fetchList(INDICES),
       fetchPsx(),
       fetchList(COMMODITIES),
+      fetchList(COMMODITY_INDICES),
       fetchList(METALS),
       fetchCrypto(),
       fetchFearGreed(),
@@ -274,7 +302,8 @@ router.get("/", async (req, res) => {
     const globalIndices = idxR.status === "fulfilled" ? idxR.value  : [];
     const psxIndices    = psxR.status === "fulfilled" ? psxR.value  : [];
     const indices       = [...psxIndices, ...globalIndices];
-    const commodities = commR.status === "fulfilled" ? commR.value : [];
+    const commodities      = commR.status  === "fulfilled" ? commR.value  : [];
+    const commodityIndices = cidxR.status === "fulfilled" ? cidxR.value : [];
     const metalsList  = metR.status  === "fulfilled" ? metR.value  : [];
     const crypto      = cryR.status  === "fulfilled" ? cryR.value  : [];
     const fearGreed   = fgR.status   === "fulfilled" ? fgR.value   : null;
@@ -294,6 +323,7 @@ router.get("/", async (req, res) => {
       currencies,
       indices,
       commodities,
+      commodityIndices,
       metals,
       crypto,
       fearGreed,
@@ -302,7 +332,7 @@ router.get("/", async (req, res) => {
     };
 
     // Log partial failures for observability
-    for (const [label, r] of [["fx", fxR], ["indices", idxR], ["psx", psxR], ["commodities", commR], ["metals", metR], ["crypto", cryR], ["fearGreed", fgR]]) {
+    for (const [label, r] of [["fx", fxR], ["indices", idxR], ["psx", psxR], ["commodities", commR], ["commodityIndices", cidxR], ["metals", metR], ["crypto", cryR], ["fearGreed", fgR]]) {
       if (r.status === "rejected") logger.warn(`market: ${label} fetch failed`, { error: r.reason?.message });
     }
 
