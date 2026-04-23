@@ -4,6 +4,7 @@ import { Bookmark, BookmarkCheck, ExternalLink, Clock, Share2, Copy, Check } fro
 import { formatDistanceToNow } from "date-fns";
 import { useNewsStore } from "../../store/newsStore";
 import { useTranslatedTexts } from "../../hooks/useTranslation";
+import { useReaderStore } from "../../hooks/useReader";
 import clsx from "clsx";
 
 const TOPIC_COLORS = {
@@ -50,6 +51,7 @@ function CredibilityDots({ score }) {
 
 export default function NewsCard({ article, index = 0, size = "normal" }) {
   const { saveArticle, unsaveArticle, isArticleSaved } = useNewsStore();
+  const openReader = useReaderStore(s => s.openReader);
   const saved = isArticleSaved(article.id);
   const [imgError, setImgError] = useState(false);
   const [showShare, setShowShare] = useState(false);
@@ -107,7 +109,15 @@ export default function NewsCard({ article, index = 0, size = "normal" }) {
       transition={{ delay: Math.min(index * 0.05, 0.5), duration: 0.4, ease: "easeOut" }}
       className={clsx("card card-hover group relative", size === "large" && "sm:col-span-2")}
     >
-      <a href={article.url} target="_blank" rel="noopener noreferrer" className="block">
+      <a
+        href={article.url}
+        onClick={(e) => {
+          // If user cmd/ctrl/middle-clicks or holds shift, let the browser open the source URL.
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+          e.preventDefault();
+          openReader(article);
+        }}
+        target="_blank" rel="noopener noreferrer" className="block">
         {/* Image */}
         {article.image_url && !imgError ? (
           <div className={clsx("relative overflow-hidden bg-[var(--color-surface2)]", size === "large" ? "h-56 sm:h-72" : "h-44")}>

@@ -25,6 +25,8 @@ import { useNews, useFeatured, useHealth, usePublicConfig, useRefresh } from "./
 import { useNewsStore } from "./store/newsStore";
 import ScoopMascot from "./components/mascot/KhabriMascot";
 import { AdSenseBanner, AdSenseSidebar, AdSenseUnit } from "./components/ads/AdSense";
+import ReaderModal from "./components/reader/ReaderModal";
+import OnboardingModal from "./components/onboarding/OnboardingModal";
 
 export default function App() {
   const { activeTopics, searchQuery, lastRefreshed, language, savedArticles } = useNewsStore();
@@ -228,6 +230,10 @@ export default function App() {
 
       {/* ── Sticky mobile anchor ad (bottom, dismissible) ──────────── */}
       <MobileAnchorAd config={adSenseConfig} />
+
+      {/* ── In-app reader + onboarding ────────────────────────────── */}
+      <ReaderModal />
+      <OnboardingModal />
 
       {/* ── Refresh toast ──────────────────────────────────────────── */}
       <AnimatePresence>

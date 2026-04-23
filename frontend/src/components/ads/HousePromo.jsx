@@ -6,6 +6,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Bell, Download, TrendingUp, Bookmark, Globe2, X } from "lucide-react";
+import NewsletterSignup from "../newsletter/NewsletterSignup";
 
 const PROMOS = [
   {
@@ -69,6 +70,15 @@ export default function HousePromo({
   if (dismissed) return null;
 
   const Icon = promo.icon;
+
+  // Newsletter promo: render the real inline signup form instead of a static CTA.
+  if (promo.id === "newsletter" && variant !== "compact") {
+    return (
+      <div style={minHeight ? { minHeight } : undefined}>
+        <NewsletterSignup />
+      </div>
+    );
+  }
 
   if (variant === "compact") {
     // For sticky mobile anchor — short, one line

@@ -101,6 +101,21 @@ function initializeSchema(db) {
       metadata    TEXT DEFAULT '{}',
       created_at  INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS subscribers (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      email        TEXT NOT NULL UNIQUE,
+      country_code TEXT,
+      language     TEXT DEFAULT 'en',
+      topics       TEXT DEFAULT '[]',
+      token        TEXT NOT NULL,
+      verified_at  INTEGER,
+      unsubscribed_at INTEGER,
+      created_at   INTEGER NOT NULL,
+      last_sent_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_subscribers_email ON subscribers(email);
+    CREATE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers(token);
   `);
 
   // FTS5 full-text search virtual table + sync triggers

@@ -4,6 +4,7 @@ import { ExternalLink, Clock, Bookmark, BookmarkCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useNewsStore } from "../../store/newsStore";
 import { useTranslatedTexts } from "../../hooks/useTranslation";
+import { useReaderStore } from "../../hooks/useReader";
 import clsx from "clsx";
 
 const TOPIC_COLORS = {
@@ -24,6 +25,7 @@ const TOPIC_LABELS = {
 
 export default function FeaturedCard({ article }) {
   const { saveArticle, unsaveArticle, isArticleSaved } = useNewsStore();
+  const openReader = useReaderStore(s => s.openReader);
   const saved = isArticleSaved(article.id);
   const [imgError, setImgError] = useState(false);
   const color = TOPIC_COLORS[article.category] || "#007AFF";
@@ -50,7 +52,14 @@ export default function FeaturedCard({ article }) {
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="card card-hover group relative overflow-hidden"
     >
-      <a href={article.url} target="_blank" rel="noopener noreferrer">
+      <a
+        href={article.url}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+          e.preventDefault();
+          openReader(article);
+        }}
+        target="_blank" rel="noopener noreferrer">
         {/* Hero image */}
         <div className="relative h-72 sm:h-96 overflow-hidden bg-[var(--color-surface2)]">
           {article.image_url && !imgError ? (

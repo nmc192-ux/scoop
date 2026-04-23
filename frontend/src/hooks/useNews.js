@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import axios from "axios";
 import { useNewsStore } from "../store/newsStore";
+import { rankArticles } from "../lib/ranker";
 
 const api = axios.create({ baseURL: "/api" });
 
 // ─── Fetch Functions ──────────────────────────────────────────────────────
 
-async function fetchNews({ category, limit = 60, offset = 0, search }) {
+async function fetchNews({ category, limit = 80, offset = 0, search }) {
   const params = { limit, offset };
   if (category && !["top", "all"].includes(category)) params.category = category;
   if (search) params.search = search;
@@ -43,16 +45,25 @@ async function fetchPublicConfig() {
 // ─── Hooks ────────────────────────────────────────────────────────────────
 
 export function useNews() {
-  const { activeTopics, searchQuery } = useNewsStore();
+  const { activeTopics, searchQuery, preferredTopics, preferredSources, mutedSources } = useNewsStore();
   const category = activeTopics.includes("top") ? null : activeTopics[0];
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ["news", activeTopics, searchQuery],
-    queryFn: () => fetchNews({ category, search: searchQuery || null }),
+    // Pull a larger set when we have prefs — gives the reranker room to promote
+    // preferred topics/sources that would otherwise fall below the fold.
+    queryFn: () => fetchNews({ category, search: searchQuery || null, limit: 80 }),
     staleTime: 3 * 60 * 1000,
     refetchInterval: 15 * 60 * 1000,
     placeholderData: (prev) => prev,
   });
+
+  const ranked = useMemo(
+    () => rankArticles(query.data || [], { preferredTopics, preferredSources, mutedSources }),
+    [query.data, preferredTopics, preferredSources, mutedSources]
+  );
+
+  return { ...query, data: ranked };
 }
 
 export function useFeatured() {

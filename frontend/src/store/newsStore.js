@@ -68,16 +68,63 @@ export const useNewsStore = create(
       // ─── Refresh ───────────────────────────────────────────────────
       lastRefreshed: null,
       setLastRefreshed: (time) => set({ lastRefreshed: time }),
+
+      // ─── Personalization ────────────────────────────────────────────
+      // Preferred topics (boost these in ranking)
+      preferredTopics: [],
+      togglePreferredTopic: (topicId) => {
+        const cur = get().preferredTopics;
+        set({
+          preferredTopics: cur.includes(topicId)
+            ? cur.filter((t) => t !== topicId)
+            : [...cur, topicId],
+        });
+      },
+      setPreferredTopics: (topics) => set({ preferredTopics: Array.isArray(topics) ? topics : [] }),
+
+      // Muted / preferred sources (boost/penalize in ranking)
+      mutedSources:     [],
+      preferredSources: [],
+      toggleMutedSource: (name) => {
+        const cur = get().mutedSources;
+        set({
+          mutedSources: cur.includes(name)
+            ? cur.filter((s) => s !== name)
+            : [...cur, name],
+        });
+      },
+      togglePreferredSource: (name) => {
+        const cur = get().preferredSources;
+        set({
+          preferredSources: cur.includes(name)
+            ? cur.filter((s) => s !== name)
+            : [...cur, name],
+        });
+      },
+
+      // Onboarding state
+      onboardingComplete: false,
+      completeOnboarding: () => set({ onboardingComplete: true }),
+      resetOnboarding:   () => set({ onboardingComplete: false }),
+
+      // Reader preferences
+      readerPrefs: { fontIdx: 1, sepia: false },
+      setReaderPrefs: (patch) => set({ readerPrefs: { ...get().readerPrefs, ...patch } }),
     }),
     {
       name: "khabari-store",
       partialize: (state) => ({
-        darkMode:         state.darkMode,
-        language:         state.language,
-        activeTopics:     state.activeTopics,
-        savedArticles:    state.savedArticles,
-        viewMode:         state.viewMode,
-        followedChannels: state.followedChannels,
+        darkMode:            state.darkMode,
+        language:            state.language,
+        activeTopics:        state.activeTopics,
+        savedArticles:       state.savedArticles,
+        viewMode:            state.viewMode,
+        followedChannels:    state.followedChannels,
+        preferredTopics:     state.preferredTopics,
+        mutedSources:        state.mutedSources,
+        preferredSources:    state.preferredSources,
+        onboardingComplete:  state.onboardingComplete,
+        readerPrefs:         state.readerPrefs,
       }),
     }
   )

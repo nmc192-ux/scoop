@@ -129,6 +129,34 @@
   }
 }
 
+/* ─── Reader mode typography ────────────────────────────────────────────── */
+.reader-body p        { margin: 0 0 1.1em; }
+.reader-body h1,
+.reader-body h2,
+.reader-body h3,
+.reader-body h4       { font-weight: 700; line-height: 1.25; margin: 1.8em 0 0.6em; }
+.reader-body h2       { font-size: 1.35em; }
+.reader-body h3       { font-size: 1.15em; }
+.reader-body a        { color: #007AFF; text-decoration: underline; text-underline-offset: 2px; }
+.reader-body img,
+.reader-body video,
+.reader-body iframe   { max-width: 100%; height: auto; border-radius: 10px; margin: 1.2em 0; }
+.reader-body figure   { margin: 1.2em 0; }
+.reader-body figcaption { font-size: 0.85em; opacity: 0.7; margin-top: 0.4em; }
+.reader-body blockquote {
+  border-left: 3px solid var(--color-border);
+  padding: 0.25em 0 0.25em 1em;
+  margin: 1.2em 0;
+  font-style: italic;
+  opacity: 0.9;
+}
+.reader-body ul,
+.reader-body ol       { margin: 0 0 1.1em 1.2em; }
+.reader-body li       { margin: 0.3em 0; }
+.reader-body pre,
+.reader-body code     { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+.reader-body pre      { background: var(--color-surface2); padding: 1em; border-radius: 10px; overflow-x: auto; }
+
 /* ─── Utility ─────────────────────────────────────────────────────────────── */
 @layer utilities {
   .hide-scrollbar::-webkit-scrollbar { display: none; }

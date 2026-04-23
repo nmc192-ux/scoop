@@ -5,6 +5,7 @@ import { enrichBatch } from "./contentEnricher.js";
 import { pruneOldArticles } from "../models/database.js";
 import { logger } from "./logger.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "../config/sources.js";
+import { sendDailyDigest } from "./digest.js";
 
 let isRunning    = false;
 let isVideoRun   = false;
@@ -22,6 +23,14 @@ export function startScheduler() {
   cron.schedule("*/30 * * * *", () => runIngestionCycle());
   cron.schedule("0 * * * *",    () => runVideoCycle());
   cron.schedule("*/15 * * * *", () => runEnrichCycle());
+  // Daily digest at 07:00 server time — no-op if SMTP is not configured.
+  cron.schedule("0 7 * * *", async () => {
+    try {
+      await sendDailyDigest();
+    } catch (err) {
+      logger.error("❌ Digest failed", { error: err.message });
+    }
+  });
   cron.schedule("0 3 * * *",    async () => {
     logger.info("🧹 Pruning...");
     const n = pruneOldArticles(7);

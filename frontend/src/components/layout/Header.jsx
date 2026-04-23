@@ -7,6 +7,7 @@ import {
 import { useNewsStore } from "../../store/newsStore";
 import { useHealth, useRefresh } from "../../hooks/useNews";
 import { ScoopLogo } from "../mascot/KhabriMascot";
+import CountryPicker from "./CountryPicker";
 import clsx from "clsx";
 
 export default function Header() {
@@ -198,6 +199,9 @@ export default function Header() {
                 اُردُو
               </button>
             </div>
+
+            {/* Country picker */}
+            <CountryPicker />
 
             {/* Dark mode */}
             <HeaderBtn onClick={toggleDarkMode} title="Toggle dark mode">
