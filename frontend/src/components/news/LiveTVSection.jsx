@@ -165,7 +165,7 @@ function NoEmbedCard({ ch }) {
 
 /* ─── Main component ─────────────────────────────────────────────────────────── */
 export default function LiveTVSection() {
-  const [isOpen,     setIsOpen]     = useState(false);
+  const [isOpen,     setIsOpen]     = useState(true);
   const [activeId,   setActiveId]   = useState(LIVE_CHANNELS[0].id);
   const [loadFailed, setLoadFailed] = useState({});
 

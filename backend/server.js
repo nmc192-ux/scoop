@@ -15,6 +15,7 @@ import marketRouter    from "./src/routes/market.js";
 import weatherRouter    from "./src/routes/weather.js";
 import liveStreamRouter from "./src/routes/liveStream.js";
 import seoRouter         from "./src/routes/seo.js";
+import geoRouter         from "./src/routes/geo.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
 import { getDb } from "./src/models/database.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
@@ -114,6 +115,7 @@ app.use("/api/translate", translateRouter);
 app.use("/api/market",   marketRouter);  // live FX, stocks, metals — has its own 15-min cache
 app.use("/api/weather",     weatherRouter);    // OpenWeatherMap proxy — 15-min cache per location
 app.use("/api/live-stream", liveStreamRouter); // YouTube RSS → current live video IDs — 10-min cache
+app.use("/api/geo",         geoRouter);        // IP → country / currency / timezone — 6h cache
 
 // Health
 app.get("/api/health", (req, res) => {

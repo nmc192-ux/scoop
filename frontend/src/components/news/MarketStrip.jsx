@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useGeo } from "../../hooks/useGeo";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Minus,
@@ -226,14 +227,21 @@ function FearGreedGauge({ fg }) {
  *  Converter tab
  * ────────────────────────────────────────────────────────────────────────── */
 
-function Converter({ currencies }) {
+function Converter({ currencies, defaultTo = "USD" }) {
   const codes = useMemo(
     () => Object.values(currencies || {}).filter((c) => c.rate != null).map((c) => c.code).concat("PKR"),
     [currencies]
   );
   const [amount, setAmount] = useState("1");
+  // "From" defaults to USD (global reserve); "To" defaults to the user's
+  // local currency (passed in from useGeo), falling back to USD.
   const [from, setFrom] = useState("USD");
-  const [to, setTo]     = useState("PKR");
+  const [to, setTo]     = useState(defaultTo);
+  // Keep the "To" currency in sync when geo resolves after mount
+  useEffect(() => {
+    if (defaultTo && codes.includes(defaultTo)) setTo(defaultTo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultTo]);
 
   const ratePkrPer = (code) => (code === "PKR" ? 1 : currencies?.[code]?.rate ?? null);
 
@@ -307,16 +315,41 @@ const TABS = [
   { id: "converter",   label: "🔁 Converter"   },
 ];
 
+// Regional index affinity — for a given country, which indices should
+// appear first. The match is by `region` code on each index def.
+const COUNTRY_TO_REGIONS = {
+  PK: ["PK"],
+  IN: ["IN"],
+  US: ["US"],
+  GB: ["UK"],
+  DE: ["DE", "EU"], FR: ["FR", "EU"], IT: ["EU"], ES: ["EU"], NL: ["EU"], BE: ["EU"], IE: ["EU"], AT: ["EU"], PT: ["EU"], GR: ["EU"], FI: ["EU"],
+  JP: ["JP"],
+  HK: ["HK"], CN: ["HK"],
+  AU: ["AU"], NZ: ["AU"],
+  CA: ["US"], // Canadians usually follow US markets
+};
+
+function sortIndicesByGeo(indices, countryCode) {
+  const prefer = COUNTRY_TO_REGIONS[countryCode] || [];
+  if (!prefer.length) return indices;
+  const score = (i) => {
+    const idx = prefer.indexOf(i.region);
+    return idx === -1 ? 99 : idx;
+  };
+  return [...indices].sort((a, b) => score(a) - score(b));
+}
+
 export default function MarketStrip({ defaultOpen = true }) {
   const [isOpen,    setIsOpen]    = useState(defaultOpen);
   const [activeTab, setTab]       = useState("forex");
   const [query,     setQuery]     = useState("");
   const { data: market, isLoading, isError, refetch, isFetching } = useMarket();
+  const { countryCode, currency: localCurrency } = useGeo();
 
   if (isError && !market) return null;
 
   const currencies       = market?.currencies       ?? {};
-  const indices          = market?.indices          ?? [];
+  const indicesRaw       = market?.indices          ?? [];
   const commodities      = market?.commodities      ?? [];
   const commodityIndices = market?.commodityIndices ?? [];
   const metals           = market?.metals           ?? {};
@@ -325,6 +358,12 @@ export default function MarketStrip({ defaultOpen = true }) {
   const updatedAt   = market?.updatedAt;
   const usdRate     = currencies.USD?.rate;
   const currencyList = Object.values(currencies).filter((c) => c.rate != null);
+
+  // Reorder indices so the user's region appears first
+  const indices = useMemo(
+    () => sortIndicesByGeo(indicesRaw, countryCode),
+    [indicesRaw, countryCode]
+  );
 
   // Apply search filter to whatever tab is showing
   const q = query.trim().toLowerCase();
@@ -505,7 +544,7 @@ export default function MarketStrip({ defaultOpen = true }) {
 
                 {activeTab === "converter" && (
                   <motion.div key="converter" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 4 }} transition={{ duration: 0.15 }}>
-                    <Converter currencies={currencies} />
+                    <Converter currencies={currencies} defaultTo={localCurrency} />
                   </motion.div>
                 )}
               </AnimatePresence>

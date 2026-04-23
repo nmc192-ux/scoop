@@ -79,6 +79,11 @@ export default function App() {
           <MarketStrip defaultOpen={false} />
         </div>
 
+        {/* ── Mobile weather (desktop has it in the sidebar) ────────── */}
+        <div className="lg:hidden mb-4">
+          <WeatherWidget />
+        </div>
+
         {/* ── Hero / Featured (Top Stories only) ─────────────────── */}
         <AnimatePresence mode="wait">
           {showFeatured && (
@@ -247,15 +252,14 @@ export default function App() {
 function MobileAnchorAd({ config }) {
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
-  if (!config?.enabled || !config?.slots?.banner) return null;
   return (
     <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--color-bg)]/95 backdrop-blur border-t border-[var(--color-border)] shadow-lg">
       <button
         onClick={() => setDismissed(true)}
-        aria-label="Dismiss ad"
-        className="absolute -top-3 right-2 w-6 h-6 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center shadow-md"
+        aria-label="Dismiss"
+        className="absolute -top-3 right-2 w-6 h-6 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center shadow-md z-10"
       >×</button>
-      <div className="px-2 py-1">
+      <div className="px-1 py-1">
         <AdSenseUnit
           slotName="banner"
           config={config}
@@ -263,6 +267,7 @@ function MobileAnchorAd({ config }) {
           format="auto"
           minHeight={60}
           style={{ maxHeight: 100 }}
+          houseVariant="compact"
         />
       </div>
     </div>
