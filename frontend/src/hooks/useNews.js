@@ -3,14 +3,19 @@ import { useMemo } from "react";
 import axios from "axios";
 import { useNewsStore } from "../store/newsStore";
 import { rankArticles } from "../lib/ranker";
+import { useGeo } from "./useGeo";
 
 const api = axios.create({ baseURL: "/api" });
 
 // ─── Fetch Functions ──────────────────────────────────────────────────────
 
-async function fetchNews({ category, limit = 80, offset = 0, search }) {
+// The backend now expects a `tab` id (one of the 9 new topics). For the Local
+// tab we additionally pass the user's country code so the server can resolve
+// it to the right set of source regions.
+async function fetchNews({ tab, country, limit = 80, offset = 0, search }) {
   const params = { limit, offset };
-  if (category && !["top", "all"].includes(category)) params.category = category;
+  if (tab && tab !== "top") params.tab = tab;
+  if (tab === "local" && country) params.country = country;
   if (search) params.search = search;
 
   const { data } = await api.get("/news", { params });
@@ -46,13 +51,21 @@ async function fetchPublicConfig() {
 
 export function useNews() {
   const { activeTopics, searchQuery, preferredTopics, preferredSources, mutedSources } = useNewsStore();
-  const category = activeTopics.includes("top") ? null : activeTopics[0];
+  const { countryCode } = useGeo();
+  // Tabs are mutually exclusive; activeTopics is always length 1 in the new
+  // model. Keep the array for saved-articles back-compat.
+  const tab = activeTopics[0] || "top";
 
   const query = useQuery({
-    queryKey: ["news", activeTopics, searchQuery],
-    // Pull a larger set when we have prefs — gives the reranker room to promote
-    // preferred topics/sources that would otherwise fall below the fold.
-    queryFn: () => fetchNews({ category, search: searchQuery || null, limit: 80 }),
+    // Include country in the key only for the Local tab — otherwise the tech
+    // tab would needlessly refetch when the user crosses a border.
+    queryKey: ["news", tab, tab === "local" ? countryCode : null, searchQuery],
+    queryFn: () => fetchNews({
+      tab,
+      country: tab === "local" ? countryCode : null,
+      search: searchQuery || null,
+      limit: 80,
+    }),
     staleTime: 3 * 60 * 1000,
     refetchInterval: 15 * 60 * 1000,
     placeholderData: (prev) => prev,

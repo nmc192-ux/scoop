@@ -194,7 +194,16 @@ export function upsertArticle(article) {
   `).run(article);
 }
 
-export function getArticles({ category, limit = 50, offset = 0, search = null, minCredibility = 0, source = null }) {
+export function getArticles({
+  category,
+  categories = null,   // array of categories to OR-match (new; beats `category`)
+  regions = null,      // array of region values to OR-match (Local tab)
+  limit = 50,
+  offset = 0,
+  search = null,
+  minCredibility = 0,
+  source = null,
+}) {
   const db = getDb();
   const useFts = search && ftsAvailable(db);
   let query = useFts
@@ -202,14 +211,32 @@ export function getArticles({ category, limit = 50, offset = 0, search = null, m
        WHERE articles_fts MATCH ? AND credibility >= ?`
     : `SELECT * FROM articles WHERE credibility >= ?`;
   const params = useFts ? [escapeFts(search), minCredibility] : [minCredibility];
-  if (category && category !== "top") { query += ` AND category = ?`; params.push(category); }
+
+  // Multi-category OR (new tab model). Fallback to single-category for back-compat.
+  if (Array.isArray(categories) && categories.length > 0) {
+    query += ` AND category IN (${categories.map(() => "?").join(",")})`;
+    params.push(...categories);
+  } else if (category && category !== "top") {
+    query += ` AND category = ?`;
+    params.push(category);
+  }
+
+  // Region filter (used for the Local tab — resolved from user's country).
+  if (Array.isArray(regions) && regions.length > 0) {
+    query += ` AND region IN (${regions.map(() => "?").join(",")})`;
+    params.push(...regions);
+  }
+
   if (source) { query += ` AND source_name = ?`; params.push(source); }
   if (search && !useFts) { query += ` AND (title LIKE ? OR description LIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
 
   // For the mixed "top" feed (no category filter), bucket into 3-hour windows then
   // prioritise by editorial weight so politics/international rise above sports/cars.
   // Single-category views use plain recency (all articles share the same priority).
-  const isMixedFeed = !category || category === "top";
+  const hasCategoryFilter =
+    (Array.isArray(categories) && categories.length > 0) ||
+    (category && category !== "top");
+  const isMixedFeed = !hasCategoryFilter;
   query += isMixedFeed
     ? ` ORDER BY (published_at / 10800000) DESC,
         CASE category

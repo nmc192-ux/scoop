@@ -3,34 +3,28 @@ import { motion } from "framer-motion";
 import { Bookmark } from "lucide-react";
 import { useNewsStore } from "../../store/newsStore";
 import { useTopics } from "../../hooks/useNews";
+import { useGeo } from "../../hooks/useGeo";
 import clsx from "clsx";
 
+// Colours are stable per tab id (referenced by both the pill background when
+// active and the subtle accent on hover). Keep aligned with the TOPICS export
+// on the backend.
 const TOPIC_COLORS = {
-  top: "#FF3B30",
+  top:      "#FF3B30",
+  live:     "#EF4444",
+  local:    "#FF9500",
+  world:    "#5856D6",
   politics: "#007AFF",
-  international: "#5856D6",
-  pakistan: "#01411C",
-  tech: "#0EA5E9",
   business: "#F59E0B",
-  local: "#FF9500",
-  sports: "#34C759",
-  cars: "#E63946",
-  science: "#5AC8FA",
-  medicine: "#FF2D55",
-  health: "#4CD964",
-  "public-health": "#FF6B35",
-  "self-help": "#AF52DE",
-  environment: "#30B0C7",
-  weather: "#64D2FF",
-  ai: "#007AFF",
-  "computer-science": "#5856D6",
-  "agentic-ai": "#FF3B30",
-  publications: "#8B5CF6",
+  tech:     "#0EA5E9",
+  science:  "#5AC8FA",
+  sports:   "#34C759",
 };
 
 export default function TopicNav() {
   const { activeTopics, toggleTopic, savedArticles } = useNewsStore();
   const { data: topics = [] } = useTopics();
+  const { countryCode, country } = useGeo();
   const scrollRef = useRef(null);
   const savedActive = activeTopics.includes("saved");
   const savedCount = savedArticles.length;
@@ -77,6 +71,12 @@ export default function TopicNav() {
           {topics.map((topic) => {
             const isActive = activeTopics.includes(topic.id);
             const color = TOPIC_COLORS[topic.id] || "#007AFF";
+            // Local tab shows the detected country as a subtitle so it's
+            // obvious what "Local" means right now — same pattern as Apple
+            // News' "Local: San Francisco". Users can override via the
+            // CountryPicker in the header.
+            const isLocal = topic.id === "local";
+            const localSuffix = isLocal && countryCode ? ` · ${countryCode}` : "";
 
             return (
               <motion.button
@@ -85,15 +85,21 @@ export default function TopicNav() {
                 whileTap={{ scale: 0.95 }}
                 onClick={() => toggleTopic(topic.id)}
                 className={clsx(
-                  "topic-pill flex items-center gap-1.5",
+                  "topic-pill flex items-center gap-1.5 flex-shrink-0",
                   isActive ? "topic-pill-active" : "topic-pill-inactive"
                 )}
                 style={isActive ? { backgroundColor: color } : {}}
-                title={topic.count ? `${topic.count} articles` : undefined}
+                title={
+                  isLocal && country
+                    ? `Local news for ${country} — change country in header`
+                    : topic.count
+                    ? `${topic.count} articles`
+                    : undefined
+                }
               >
                 <span className="text-base leading-none">{topic.emoji}</span>
-                <span>{topic.label}</span>
-                {topic.count > 0 && (
+                <span>{topic.label}{localSuffix}</span>
+                {!isLocal && topic.count > 0 && (
                   <span
                     className={clsx(
                       "text-xs px-1.5 py-0.5 rounded-full font-semibold",
@@ -117,17 +123,6 @@ export default function TopicNav() {
             }}
           />
         </div>
-
-        {/* Multi-select hint */}
-        {activeTopics.length > 1 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className="pb-2 text-xs text-[var(--color-text-tertiary)] text-center"
-          >
-            📌 Showing {activeTopics.length} topics — tap a topic to deselect
-          </motion.div>
-        )}
       </div>
     </nav>
   );

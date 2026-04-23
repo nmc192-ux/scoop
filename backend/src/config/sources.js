@@ -338,25 +338,66 @@ export const X_ACCOUNTS = {
 };
 
 // ─── Topic Definitions ────────────────────────────────────────────────────
+// These are the *user-facing tabs* (9 total). The old flat list of 20 was
+// noisy and duplicative — now each tab maps to one or many underlying
+// article categories via TAB_CATEGORIES below.
+//
+// "live" is a virtual tab served by the /api/events router (Phase B dossiers)
+// and returns nothing through /api/news.
+//
+// "local" is virtual too: the news route resolves it to `region IN (…)` using
+// COUNTRY_REGIONS and the user's detected (or overridden) country code.
 export const TOPICS = [
-  { id: "top",            label: "Top Stories",    emoji: "🔥", color: "#FF3B30" },
-  { id: "politics",       label: "Politics",       emoji: "🏛️", color: "#007AFF" },
-  { id: "international",  label: "International",  emoji: "🌍", color: "#5856D6" },
-  { id: "pakistan",       label: "Pakistan",       emoji: "🇵🇰", color: "#01411C" },
-  { id: "tech",           label: "Tech",           emoji: "📱", color: "#0EA5E9" },
-  { id: "business",       label: "Business",       emoji: "💼", color: "#F59E0B" },
-  { id: "local",          label: "Local",          emoji: "📍", color: "#FF9500" },
-  { id: "sports",         label: "Sports",         emoji: "🏆", color: "#34C759" },
-  { id: "cars",           label: "Cars",           emoji: "🚗", color: "#E63946" },
-  { id: "science",        label: "Science",        emoji: "🔬", color: "#5AC8FA" },
-  { id: "medicine",       label: "Medicine",       emoji: "⚕️", color: "#FF2D55" },
-  { id: "health",         label: "Health",         emoji: "💪", color: "#4CD964" },
-  { id: "public-health",  label: "Public Health",  emoji: "🏥", color: "#FF6B35" },
-  { id: "self-help",      label: "Self Help",      emoji: "🧘", color: "#AF52DE" },
-  { id: "environment",    label: "Environment",    emoji: "🌱", color: "#30B0C7" },
-  { id: "weather",        label: "Weather",        emoji: "🌤️", color: "#64D2FF" },
-  { id: "ai",             label: "AI",             emoji: "🤖", color: "#007AFF" },
-  { id: "computer-science",label: "Computer Science", emoji: "💻", color: "#5856D6" },
-  { id: "agentic-ai",     label: "Agentic AI",     emoji: "🦾", color: "#FF3B30" },
-  { id: "publications",   label: "Publications",   emoji: "📚", color: "#8B5CF6" },
+  { id: "top",      label: "Top",              emoji: "🔥", color: "#FF3B30" },
+  { id: "live",     label: "Live",             emoji: "🔴", color: "#EF4444" },
+  { id: "local",    label: "Local",            emoji: "📍", color: "#FF9500" },
+  { id: "world",    label: "World",            emoji: "🌍", color: "#5856D6" },
+  { id: "politics", label: "Politics",         emoji: "🏛️", color: "#007AFF" },
+  { id: "business", label: "Business",         emoji: "💼", color: "#F59E0B" },
+  { id: "tech",     label: "Tech & AI",        emoji: "🤖", color: "#0EA5E9" },
+  { id: "science",  label: "Science & Health", emoji: "🔬", color: "#5AC8FA" },
+  { id: "sports",   label: "Sports",           emoji: "🏆", color: "#34C759" },
 ];
+
+// Maps a user-facing tab → the underlying article.category values the DB
+// stores. Empty array means "no category filter" (e.g. "top" is the mixed
+// editorial feed; "local" filters by region instead; "live" is served by a
+// different route).
+//
+// Merging rationale:
+//   - tech     → absorbs the ai / agentic-ai / computer-science sources
+//                (users think of it as one thing)
+//   - science  → absorbs medicine / health / public-health / environment
+//                (all "how the world works" content)
+//   - business → absorbs cars (niche) and publications (essays & analysis)
+//   - world    → renamed from "international"
+export const TAB_CATEGORIES = {
+  top:      [],
+  live:     [],
+  local:    [],
+  world:    ["international"],
+  politics: ["politics"],
+  business: ["business", "cars", "publications"],
+  tech:     ["tech", "ai", "agentic-ai", "computer-science"],
+  science:  ["science", "medicine", "health", "public-health", "environment"],
+  sports:   ["sports"],
+};
+
+// Country code → list of article.region values that count as "local".
+// Sources carry a region tag (e.g. "us-west", "pk", "uk"). For the Local tab
+// we look up the user's country (from /api/geo or their override) and match
+// any source whose region appears here. "global" is never local.
+//
+// Add more entries as you onboard regional sources. Unknown countries fall
+// back to an empty list → Local tab shows "no local sources yet for X, try
+// picking a country".
+export const COUNTRY_REGIONS = {
+  US: ["us", "us-west", "us-east", "us-midwest", "us-south"],
+  PK: ["pk"],
+  GB: ["uk", "gb"],
+  IN: ["in"],
+  CA: ["ca"],
+  AU: ["au"],
+  AE: ["ae"],
+  SA: ["sa"],
+};

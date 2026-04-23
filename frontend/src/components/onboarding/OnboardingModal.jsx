@@ -10,19 +10,16 @@ import { useNewsStore } from "../../store/newsStore";
 import { useGeo } from "../../hooks/useGeo";
 import ScoopMascot from "../mascot/KhabriMascot";
 
+// Keep aligned with TOPICS in backend/src/config/sources.js.
+// Virtual tabs (live, local, saved) are excluded — they can't be "preferred"
+// in the ranker since they aren't real categories.
 const TOPIC_OPTIONS = [
-  { id: "top",           emoji: "📰", label: "Top Stories" },
-  { id: "politics",      emoji: "🏛️", label: "Politics" },
-  { id: "international", emoji: "🌍", label: "World" },
-  { id: "sports",        emoji: "🏆", label: "Sports" },
-  { id: "science",       emoji: "🔬", label: "Science" },
-  { id: "health",        emoji: "💪", label: "Health" },
-  { id: "ai",            emoji: "🤖", label: "AI" },
-  { id: "computer-science", emoji: "💻", label: "Tech" },
-  { id: "environment",   emoji: "🌱", label: "Environment" },
-  { id: "weather",       emoji: "🌤️", label: "Weather" },
-  { id: "medicine",      emoji: "💊", label: "Medicine" },
-  { id: "self-help",     emoji: "🌟", label: "Wellness" },
+  { id: "world",    emoji: "🌍", label: "World" },
+  { id: "politics", emoji: "🏛️", label: "Politics" },
+  { id: "business", emoji: "💼", label: "Business" },
+  { id: "tech",     emoji: "🤖", label: "Tech & AI" },
+  { id: "science",  emoji: "🔬", label: "Science & Health" },
+  { id: "sports",   emoji: "🏆", label: "Sports" },
 ];
 
 const QUICK_REGIONS = [

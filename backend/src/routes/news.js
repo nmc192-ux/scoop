@@ -11,7 +11,7 @@ import {
   trackEvent,
 } from "../models/database.js";
 import { getSchedulerStatus, triggerManualRefresh } from "../services/scheduler.js";
-import { TOPICS } from "../config/sources.js";
+import { TOPICS, TAB_CATEGORIES, COUNTRY_REGIONS } from "../config/sources.js";
 import { logger } from "../services/logger.js";
 
 const router = express.Router();
@@ -21,9 +21,26 @@ function hashIp(ip) {
 }
 
 // GET /api/news - paginated news with optional filters
+//
+// Query model (new):
+//   tab=<topId>          one of the 9 user-facing tab ids (see TOPICS).
+//                        Resolves through TAB_CATEGORIES to a set of article
+//                        categories. "local" resolves to `regions` using
+//                        `country` + COUNTRY_REGIONS. "live" is handled by a
+//                        separate /api/events route and returns an empty set
+//                        here.
+//   country=<ISO2>       caller's country code (e.g. "US", "PK"). Only used
+//                        when tab === "local". Frontend reads this from
+//                        /api/geo or the user's saved override.
+//
+// Back-compat:
+//   category=<id>        old single-category filter still works; if supplied
+//                        alongside `tab`, `tab` wins.
 router.get("/", (req, res) => {
   try {
     const {
+      tab = null,
+      country = null,
       category = null,
       limit = 50,
       offset = 0,
@@ -32,8 +49,50 @@ router.get("/", (req, res) => {
       source = null,
     } = req.query;
 
+    // Resolve tab → categories / regions.
+    let resolvedCategories = null;
+    let resolvedRegions = null;
+
+    if (tab) {
+      // "live" tab has no underlying news articles — the Events dossiers are
+      // served separately. Return an empty list rather than surprising users.
+      if (tab === "live") {
+        return res.json({
+          success: true,
+          data: [],
+          meta: { count: 0, limit: parseInt(limit), offset: parseInt(offset), tab },
+        });
+      }
+
+      if (tab === "local") {
+        const cc = (country || "").toUpperCase();
+        resolvedRegions = COUNTRY_REGIONS[cc] || [];
+        // If we don't know this country yet, don't collapse to "all articles"
+        // — the user explicitly asked for local, so empty is the honest answer.
+        if (resolvedRegions.length === 0) {
+          return res.json({
+            success: true,
+            data: [],
+            meta: {
+              count: 0, limit: parseInt(limit), offset: parseInt(offset),
+              tab, country: cc || null,
+              notice: cc
+                ? `No local sources wired up for ${cc} yet`
+                : "No country detected; enable location or pick one",
+            },
+          });
+        }
+      } else if (TAB_CATEGORIES[tab]) {
+        const cats = TAB_CATEGORIES[tab];
+        if (cats.length > 0) resolvedCategories = cats;
+        // else: "top" → leave null → mixed editorial feed
+      }
+    }
+
     const articles = getArticles({
-      category: category || null,
+      category: !tab ? (category || null) : null, // legacy path only
+      categories: resolvedCategories,
+      regions: resolvedRegions,
       limit: Math.min(parseInt(limit), 100),
       offset: parseInt(offset),
       search: search || null,
@@ -43,9 +102,9 @@ router.get("/", (req, res) => {
 
     // Track analytics (privacy-safe, no PII)
     trackEvent("page_view", {
-      category,
+      category: tab || category,
       ipHash: hashIp(req.ip),
-      metadata: { limit, offset },
+      metadata: { limit, offset, tab, country },
     });
 
     res.json({
@@ -55,7 +114,8 @@ router.get("/", (req, res) => {
         count: articles.length,
         limit: parseInt(limit),
         offset: parseInt(offset),
-        category,
+        tab: tab || null,
+        category: category || null,
       },
     });
   } catch (err) {
@@ -76,17 +136,23 @@ router.get("/featured", (req, res) => {
   }
 });
 
-// GET /api/news/topics - topic list with counts
+// GET /api/news/topics - topic list with counts.
+// Counts are summed across the underlying categories that each tab aggregates
+// (e.g. the "Tech & AI" tab reports tech + ai + agentic-ai + computer-science).
+// Virtual tabs ("top", "live", "local") get a 0 count — "top" shows everything
+// anyway, "live" has its own dossier count, and "local" depends on the user's
+// country so we can't compute it without geo context here.
 router.get("/topics", (req, res) => {
   try {
     const counts = getTopicCounts();
     const countMap = {};
     counts.forEach(({ category, count }) => { countMap[category] = count; });
 
-    const topics = TOPICS.map(t => ({
-      ...t,
-      count: countMap[t.id] || 0,
-    }));
+    const topics = TOPICS.map(t => {
+      const cats = TAB_CATEGORIES[t.id] || [];
+      const count = cats.reduce((sum, c) => sum + (countMap[c] || 0), 0);
+      return { ...t, count };
+    });
 
     res.json({ success: true, data: topics });
   } catch (err) {

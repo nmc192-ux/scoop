@@ -28,17 +28,14 @@ export const useNewsStore = create(
       setAutoLanguage: (v) => set({ autoLanguage: !!v }),
 
       // ─── Active Topics ─────────────────────────────────────────────
+      // Tabs are now single-select (Apple News–style). The array is kept as
+      // the storage shape so "saved" can live alongside a topic id without a
+      // breaking migration.
       activeTopics: ["top"],
       setActiveTopics: (topics) => set({ activeTopics: topics }),
       toggleTopic: (topicId) => {
-        const current = get().activeTopics;
-        if (topicId === "top" || topicId === "saved") { set({ activeTopics: [topicId] }); return; }
-        if (current.includes(topicId)) {
-          const next = current.filter(t => t !== topicId && t !== "top" && t !== "saved");
-          set({ activeTopics: next.length ? next : ["top"] });
-        } else {
-          set({ activeTopics: [...current.filter(t => t !== "top" && t !== "saved"), topicId] });
-        }
+        // Single-select: any tap replaces the current tab.
+        set({ activeTopics: [topicId] });
       },
 
       // ─── Search ────────────────────────────────────────────────────
@@ -120,6 +117,49 @@ export const useNewsStore = create(
     }),
     {
       name: "khabari-store",
+      // Bump when the persisted shape changes incompatibly. v2 = Apple-News
+      // style 9-tab topic list; old ids like "pakistan"/"medicine"/"cars" get
+      // remapped or dropped so returning users don't land on a dead tab.
+      version: 2,
+      migrate: (persisted, fromVersion) => {
+        if (!persisted) return persisted;
+        if (fromVersion < 2 && Array.isArray(persisted.activeTopics)) {
+          const remap = {
+            international: "world",
+            pakistan: "local", // user's Local tab + their country picker takes over
+            ai: "tech",
+            "agentic-ai": "tech",
+            "computer-science": "tech",
+            medicine: "science",
+            health: "science",
+            "public-health": "science",
+            environment: "science",
+            "self-help": "top",
+            weather: "top",
+            cars: "business",
+            publications: "business",
+          };
+          const valid = new Set([
+            "top", "live", "local", "world", "politics",
+            "business", "tech", "science", "sports", "saved",
+          ]);
+          const next = persisted.activeTopics
+            .map((t) => remap[t] || t)
+            .filter((t) => valid.has(t));
+          persisted.activeTopics = next.length ? [next[0]] : ["top"];
+          // preferredTopics goes through the same filter (stored in settings).
+          if (Array.isArray(persisted.preferredTopics)) {
+            persisted.preferredTopics = [
+              ...new Set(
+                persisted.preferredTopics
+                  .map((t) => remap[t] || t)
+                  .filter((t) => valid.has(t) && t !== "saved")
+              ),
+            ];
+          }
+        }
+        return persisted;
+      },
       partialize: (state) => ({
         darkMode:            state.darkMode,
         language:            state.language,
