@@ -1,9 +1,11 @@
 /**
  * Multi-provider translator with a quality-ordered fallback chain.
  *
- *   1. DeepL        — best grammar + fluency.  Needs DEEPL_API_KEY.
- *   2. Google Cloud — strong general quality.   Needs GOOGLE_TRANSLATE_KEY.
- *   3. MyMemory     — free, rate-limited, weaker. Always available.
+ *   1. LibreTranslate — free & unlimited when self-hosted (Docker).
+ *                       Public endpoints also supported; set LIBRETRANSLATE_URL.
+ *   2. DeepL          — best grammar.   Needs DEEPL_API_KEY.
+ *   3. Google Cloud   — strong quality. Needs GOOGLE_TRANSLATE_KEY.
+ *   4. MyMemory       — free fallback, rate-limited, weaker quality.
  *
  * Each provider returns the raw translation; callers run the shared
  * `polishText` pass afterwards to fix common grammatical glitches that tend
@@ -13,13 +15,30 @@
  * Providers are retried in order: if the first one throws or returns the
  * source string unchanged we fall through to the next one. The caller
  * sees a single async `translate(text, target, source?)` function.
+ *
+ * ── Env vars ────────────────────────────────────────────────────────────
+ *   LIBRETRANSLATE_URL      default: http://127.0.0.1:5000 (self-hosted)
+ *                           set to https://libretranslate.com or any public
+ *                           mirror if you don't want to run your own
+ *   LIBRETRANSLATE_API_KEY  optional; required by some public instances
+ *   DEEPL_API_KEY           optional (enables DeepL tier)
+ *   GOOGLE_TRANSLATE_KEY    optional (enables Google tier)
+ *   MYMEMORY_EMAIL          optional registered email — gives 10k words/day
  */
 import axios from "axios";
 import { logger } from "./logger.js";
 
-const DEEPL_KEY   = process.env.DEEPL_API_KEY     || "";
-const GOOGLE_KEY  = process.env.GOOGLE_TRANSLATE_KEY || "";
-const MYMEMORY_EMAIL = process.env.MYMEMORY_EMAIL || "khabari.app@gmail.com";
+const LIBRE_URL   = (process.env.LIBRETRANSLATE_URL || "http://127.0.0.1:5000").replace(/\/+$/, "");
+const LIBRE_KEY   = process.env.LIBRETRANSLATE_API_KEY || "";
+const DEEPL_KEY   = process.env.DEEPL_API_KEY         || "";
+const GOOGLE_KEY  = process.env.GOOGLE_TRANSLATE_KEY  || "";
+const MYMEMORY_EMAIL = process.env.MYMEMORY_EMAIL     || "khabari.app@gmail.com";
+
+// Circuit-breaker for LibreTranslate: if a call fails, stop trying for a
+// short window so we don't block every translation on a dead endpoint.
+let libreDeadUntil = 0;
+function libreAvailable() { return Date.now() >= libreDeadUntil; }
+function markLibreDead(ms = 60_000) { libreDeadUntil = Date.now() + ms; }
 
 // DeepL target codes are mostly ISO 639-1 but with a few variations.
 const DEEPL_TARGET_MAP = {
@@ -35,6 +54,29 @@ function deeplHost() {
 }
 
 // ─── Providers ─────────────────────────────────────────────────────────────
+async function translateLibre(text, target, source) {
+  if (!libreAvailable()) return null;
+  try {
+    const payload = {
+      q: text,
+      source: (source && source !== "auto") ? source : "auto",
+      target,
+      format: "text",
+    };
+    if (LIBRE_KEY) payload.api_key = LIBRE_KEY;
+    const { data } = await axios.post(`${LIBRE_URL}/translate`, payload, {
+      timeout: 20000,
+      headers: { "Content-Type": "application/json" },
+    });
+    return data?.translatedText || null;
+  } catch (err) {
+    // 4xx means we reached the server but it rejected — don't blacklist it.
+    const status = err?.response?.status;
+    if (!status || status >= 500) markLibreDead();
+    throw err;
+  }
+}
+
 async function translateDeepL(text, target, source) {
   if (!DEEPL_KEY) return null;
   const params = new URLSearchParams();
@@ -110,9 +152,10 @@ export function polishText(text, target) {
 
 // ─── Public API ────────────────────────────────────────────────────────────
 const PROVIDERS = [
-  { name: "deepl",    fn: translateDeepL,    enabled: () => !!DEEPL_KEY  },
-  { name: "google",   fn: translateGoogle,   enabled: () => !!GOOGLE_KEY },
-  { name: "mymemory", fn: translateMyMemory, enabled: () => true         },
+  { name: "libretranslate", fn: translateLibre,    enabled: () => !!LIBRE_URL  },
+  { name: "deepl",          fn: translateDeepL,    enabled: () => !!DEEPL_KEY  },
+  { name: "google",         fn: translateGoogle,   enabled: () => !!GOOGLE_KEY },
+  { name: "mymemory",       fn: translateMyMemory, enabled: () => true         },
 ];
 
 export function availableProviders() {
