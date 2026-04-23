@@ -19,6 +19,9 @@ import geoRouter         from "./src/routes/geo.js";
 import readerRouter      from "./src/routes/reader.js";
 import newsletterRouter  from "./src/routes/newsletter.js";
 import liveEventsRouter  from "./src/routes/liveEvents.js";
+import affiliateRouter   from "./src/routes/affiliate.js";
+import { detectCountry } from "./src/services/geolocation.js";
+import { skimlinksPublisherId, amazonInfoForCountry } from "./src/config/affiliates.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
 import { getDb } from "./src/models/database.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
@@ -122,6 +125,7 @@ app.use("/api/geo",         geoRouter);        // IP → country / currency / ti
 app.use("/api/reader",      readerRouter);     // Readability-powered article extraction — 12h cache
 app.use("/api/newsletter",  newsletterRouter); // subscribe / unsubscribe / daily digest
 app.use("/api/live-events", liveEventsRouter); // "Live" tab dossiers (AI-synthesized briefs + metrics)
+app.use("/api/affiliate",   affiliateRouter);  // geo-aware affiliate program picker + paywall CTA resolver
 
 // Health
 app.get("/api/health", (req, res) => {
@@ -147,7 +151,16 @@ app.get("/api/public-config", (req, res) => {
     || (clientId.startsWith("ca-pub-") ? clientId.replace(/^ca-/, "") : "");
   const testMode = String(process.env.ADSENSE_TEST_MODE || process.env.VITE_ADSENSE_TEST_MODE || "").toLowerCase() === "true";
 
+  const country = detectCountry(req);
+  const skim = skimlinksPublisherId();
+  const amazon = amazonInfoForCountry(country);
+
   res.json({
+    country,
+    affiliate: {
+      skimlinksId: skim || "",
+      amazon: amazon || null,
+    },
     adsense: {
       enabled: Boolean(clientId),
       clientId,

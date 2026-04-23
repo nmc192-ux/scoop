@@ -26,6 +26,8 @@ import { useNews, useFeatured, useHealth, usePublicConfig, useRefresh } from "./
 import { useNewsStore } from "./store/newsStore";
 import ScoopMascot from "./components/mascot/KhabriMascot";
 import { AdSenseBanner, AdSenseSidebar, AdSenseUnit } from "./components/ads/AdSense";
+import AffiliateWidget from "./components/ads/AffiliateWidget";
+import SkimlinksLoader from "./components/ads/SkimlinksLoader";
 import ReaderModal from "./components/reader/ReaderModal";
 import OnboardingModal from "./components/onboarding/OnboardingModal";
 
@@ -61,6 +63,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] transition-colors duration-300">
+      <SkimlinksLoader publisherId={publicConfig?.affiliate?.skimlinksId} />
       <Header />
       <BreakingBanner />
       <TopicNav />
@@ -190,6 +193,7 @@ export default function App() {
               label="Sponsored"
               format="auto"
             />
+            <AffiliateWidget category="default" />
             <MarketStrip />
             <MostReadSidebar articles={articles} />
           </aside>
