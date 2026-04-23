@@ -8,6 +8,8 @@ import { useNewsStore } from "../../store/newsStore";
 import { useHealth, useRefresh } from "../../hooks/useNews";
 import { ScoopLogo } from "../mascot/KhabriMascot";
 import CountryPicker from "./CountryPicker";
+import LanguagePicker from "./LanguagePicker";
+import { isRtl } from "../../lib/languages";
 import clsx from "clsx";
 
 export default function Header() {
@@ -15,7 +17,7 @@ export default function Header() {
     darkMode, toggleDarkMode,
     searchQuery, setSearchQuery,
     viewMode, setViewMode,
-    language, setLanguage,
+    language,
   } = useNewsStore();
   const { data: health } = useHealth();
   const refresh = useRefresh();
@@ -36,7 +38,8 @@ export default function Header() {
   };
 
   const articleCount = health?.articles || 0;
-  const isUrdu = language === "ur";
+  const rtl = isRtl(language);
+  const isUrdu = language === "ur"; // keeps legacy Urdu-specific styling for the search box
 
   return (
     <header
@@ -173,32 +176,8 @@ export default function Header() {
               </button>
             </div>
 
-            {/* ── EN / Urdu language toggle ──────────────────────────── */}
-            <div className="flex items-center rounded-full bg-[var(--color-surface2)] border border-[var(--color-border)] p-0.5 gap-0.5">
-              <button
-                onClick={() => setLanguage("en")}
-                className={clsx(
-                  "px-2.5 py-1 rounded-full text-xs font-bold transition-all duration-200",
-                  language === "en"
-                    ? "bg-[var(--color-accent)] text-white shadow-sm"
-                    : "text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]"
-                )}
-              >
-                EN
-              </button>
-              <button
-                onClick={() => setLanguage("ur")}
-                className={clsx(
-                  "px-2.5 py-1 rounded-full text-xs font-bold transition-all duration-200",
-                  language === "ur"
-                    ? "bg-[var(--color-accent)] text-white shadow-sm"
-                    : "text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]"
-                )}
-                style={{ fontFamily: "'Noto Nastaliq Urdu', serif" }}
-              >
-                اُردُو
-              </button>
-            </div>
+            {/* Language picker (21 languages + auto) */}
+            <LanguagePicker />
 
             {/* Country picker */}
             <CountryPicker />

@@ -63,9 +63,13 @@ export default function NewsCard({ article, index = 0, size = "normal" }) {
   const emoji = TOPIC_EMOJIS[article.category] || "📰";
   const isRecent = Date.now() - article.published_at < 3 * 60 * 60 * 1000;
 
-  // Translation
+  // Translation — source lang defaults to article's own language (so e.g.
+  // German feeds stay German when user is on Auto, but translate when user
+  // picks English).
   const textsToTranslate = [article.title || "", article.description || ""];
-  const { texts: translatedTexts, isUrdu } = useTranslatedTexts(textsToTranslate);
+  const { texts: translatedTexts, isUrdu } = useTranslatedTexts(
+    textsToTranslate, article.language || "en"
+  );
   const displayTitle = translatedTexts[0] || article.title;
   const displayDesc  = translatedTexts[1] || article.description;
 

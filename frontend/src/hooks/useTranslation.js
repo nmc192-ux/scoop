@@ -11,8 +11,8 @@ function getCacheKey(text, lang) { return `${lang}::${text}`; }
 // ─── Global pending deduplication — same text = same promise ─────────────
 const pendingRequests = new Map();
 
-async function fetchTranslation(texts, lang) {
-  const cacheKey = texts.join("|||") + ":::" + lang;
+async function fetchTranslation(texts, lang, source = "auto") {
+  const cacheKey = texts.join("|||") + ":::" + lang + ":::" + source;
   if (pendingRequests.has(cacheKey)) return pendingRequests.get(cacheKey);
 
   const promise = (async () => {
@@ -34,6 +34,7 @@ async function fetchTranslation(texts, lang) {
         const { data } = await api.post("/translate", {
           texts: toFetch.map(f => f.text),
           lang,
+          source,
         });
         if (data.success) {
           data.data.forEach((translated, j) => {
@@ -60,55 +61,57 @@ async function fetchTranslation(texts, lang) {
 }
 
 /**
- * Translate an array of strings when language === 'ur'.
- * - First render ALWAYS fires a fetch (prevLang starts null)
- * - Cache hits (session) served synchronously
- * - Falls back to original text on error
+ * Translate an array of strings into the user's chosen language.
+ *
+ * @param {string[]} texts       — source strings
+ * @param {string}   sourceLang  — the strings' source language ("en" by default)
+ *
+ * Behavior:
+ *  - If `autoLanguage` is true OR target === sourceLang, returns texts as-is.
+ *  - Otherwise hits /api/translate with source + target.
+ *  - Session cache + in-flight dedup keep this cheap on re-renders.
  */
-export function useTranslatedTexts(texts = []) {
-  const { language } = useNewsStore();
+export function useTranslatedTexts(texts = [], sourceLang = "en") {
+  const { language, autoLanguage } = useNewsStore();
   const [translated, setTranslated] = useState(texts);
-  const prevLang  = useRef(null);   // null triggers fetch on first render
-  const prevKey   = useRef(null);
+  const prevKey = useRef(null);
+
+  const target = autoLanguage ? sourceLang : language;
+  const skip   = !target || target === sourceLang;
 
   useEffect(() => {
-    if (language === "en") {
+    if (skip) {
       setTranslated(texts);
-      prevLang.current = language;
-      prevKey.current  = texts.join("|||");
+      prevKey.current = texts.join("|||") + ":::" + (target || "x");
       return;
     }
 
-    const currentKey = texts.join("|||");
-    const textsChanged = currentKey !== prevKey.current;
-    const langChanged  = language    !== prevLang.current;
-
-    if (!textsChanged && !langChanged) return;
-
-    prevLang.current = language;
-    prevKey.current  = currentKey;
+    const currentKey = texts.join("|||") + ":::" + target + ":::" + sourceLang;
+    if (currentKey === prevKey.current) return;
+    prevKey.current = currentKey;
 
     // Serve cache hits immediately for snappy UX
-    const immediate = texts.map(t => translationCache.get(getCacheKey(t, language)) ?? t);
+    const immediate = texts.map(t => translationCache.get(getCacheKey(t, target)) ?? t);
     setTranslated(immediate);
 
     let cancelled = false;
     (async () => {
-      const result = await fetchTranslation(texts, language);
+      const result = await fetchTranslation(texts, target, sourceLang);
       if (!cancelled) setTranslated([...result]);
     })();
 
     return () => { cancelled = true; };
-  }, [language, texts.join("|||")]);
+  }, [target, sourceLang, skip, texts.join("|||")]);
 
   return {
-    texts:  language === "en" ? texts : translated,
-    isUrdu: language === "ur",
+    texts:  skip ? texts : translated,
+    isRtl:  ["ar", "fa", "ur", "he", "ps"].includes(target),
+    isUrdu: target === "ur",
   };
 }
 
 /** Convenience hook for a single string */
-export function useTranslated(text) {
-  const { texts } = useTranslatedTexts(text ? [text] : [""]);
+export function useTranslated(text, sourceLang = "en") {
+  const { texts } = useTranslatedTexts(text ? [text] : [""], sourceLang);
   return texts[0] || text;
 }

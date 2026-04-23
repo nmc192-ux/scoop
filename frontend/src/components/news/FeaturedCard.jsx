@@ -32,11 +32,11 @@ export default function FeaturedCard({ article }) {
   const label = TOPIC_LABELS[article.category] || article.category;
   const isRecent = Date.now() - article.published_at < 2 * 60 * 60 * 1000;
 
-  // Translation
-  const { texts: translated, isUrdu } = useTranslatedTexts([
-    article.title || "",
-    article.description || "",
-  ]);
+  // Translation — source language comes from the article's metadata.
+  const { texts: translated, isUrdu } = useTranslatedTexts(
+    [article.title || "", article.description || ""],
+    article.language || "en"
+  );
   const displayTitle = translated[0] || article.title;
   const displayDesc  = translated[1] || article.description;
 

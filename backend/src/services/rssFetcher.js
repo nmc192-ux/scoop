@@ -5,6 +5,18 @@ import { upsertArticle, logIngestionEvent, updateSourceHealth } from "../models/
 
 const NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
+// Region → likely primary publication language. Soft fallback when the feed
+// itself doesn't declare `<language>`. Pakistani English papers (Dawn, Geo,
+// Tribune etc.) all publish in English, so region=pk → en, not ur.
+const REGION_LANG = {
+  pk: "en", in: "en", us: "en", uk: "en", global: "en",
+  de: "de", fr: "fr", es: "es", pt: "pt", it: "it", ru: "ru",
+  cn: "zh", jp: "ja", kr: "ko", tr: "tr", sa: "ar", ae: "ar",
+};
+function inferSourceLanguage(source) {
+  return REGION_LANG[(source.region || "").toLowerCase()] || null;
+}
+
 const parser = new Parser({
   timeout: 15000,
   headers: {
@@ -96,6 +108,15 @@ export async function fetchSource(source) {
         fetched_at: Date.now(),
         credibility: source.credibility || 7,
         tags: JSON.stringify([source.category, source.region || "global"]),
+        // Source language: feed-provided → source config → inferred from
+        // region → "en". Used by the frontend to default each article to
+        // its publication's language (user can override).
+        language: (
+          (feed.language && String(feed.language).slice(0, 2).toLowerCase()) ||
+          source.language ||
+          inferSourceLanguage(source) ||
+          "en"
+        ),
       };
 
       const insertResult = upsertArticle(article);

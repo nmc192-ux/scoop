@@ -40,6 +40,7 @@ export default function OnboardingModal() {
   const {
     onboardingComplete, completeOnboarding,
     language, setLanguage,
+    autoLanguage, setAutoLanguage,
     setPreferredTopics, setActiveTopics,
   } = useNewsStore();
 
@@ -159,24 +160,47 @@ export default function OnboardingModal() {
                     <h3 className="font-semibold">Choose your language</h3>
                   </div>
                   <p className="text-xs text-[var(--color-text-tertiary)] mb-4">
-                    Interface + headline translations. You can switch anytime.
+                    Articles are shown in their original language by default. Pick a language to translate everything, or keep Auto. You can change this anytime from the header.
                   </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => { setLanguage("en"); setStep(2); }}
-                      className={`px-4 py-3 rounded-xl border text-left ${language === "en" ? "border-brand-blue bg-brand-blue/5" : "border-[var(--color-border)] hover:bg-[var(--color-surface2)]"}`}
-                    >
-                      <div className="font-semibold text-sm">English</div>
-                      <div className="text-[11px] text-[var(--color-text-tertiary)]">Default</div>
-                    </button>
-                    <button
-                      onClick={() => { setLanguage("ur"); setStep(2); }}
-                      className={`px-4 py-3 rounded-xl border text-left ${language === "ur" ? "border-brand-blue bg-brand-blue/5" : "border-[var(--color-border)] hover:bg-[var(--color-surface2)]"}`}
-                    >
-                      <div className="font-semibold text-sm" style={{ fontFamily: "'Noto Nastaliq Urdu', serif" }}>اُردُو</div>
-                      <div className="text-[11px] text-[var(--color-text-tertiary)]">Urdu (RTL)</div>
-                    </button>
+                  <button
+                    onClick={() => { setAutoLanguage(true); setStep(2); }}
+                    className={`w-full px-4 py-3 rounded-xl border text-left mb-2 ${
+                      autoLanguage ? "border-brand-blue bg-brand-blue/5" : "border-[var(--color-border)] hover:bg-[var(--color-surface2)]"
+                    }`}
+                  >
+                    <div className="font-semibold text-sm">🌐 Auto — article's language</div>
+                    <div className="text-[11px] text-[var(--color-text-tertiary)]">Recommended — original grammar and nuance preserved</div>
+                  </button>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { code: "en", flag: "🇺🇸", native: "English" },
+                      { code: "es", flag: "🇪🇸", native: "Español" },
+                      { code: "fr", flag: "🇫🇷", native: "Français" },
+                      { code: "de", flag: "🇩🇪", native: "Deutsch" },
+                      { code: "ar", flag: "🇸🇦", native: "العربية" },
+                      { code: "ur", flag: "🇵🇰", native: "اُردُو" },
+                      { code: "hi", flag: "🇮🇳", native: "हिन्दी" },
+                      { code: "zh", flag: "🇨🇳", native: "中文" },
+                      { code: "ja", flag: "🇯🇵", native: "日本語" },
+                    ].map((l) => {
+                      const on = !autoLanguage && language === l.code;
+                      return (
+                        <button
+                          key={l.code}
+                          onClick={() => { setAutoLanguage(false); setLanguage(l.code); setStep(2); }}
+                          className={`px-2 py-2 rounded-xl border text-left ${
+                            on ? "border-brand-blue bg-brand-blue/5" : "border-[var(--color-border)] hover:bg-[var(--color-surface2)]"
+                          }`}
+                        >
+                          <div className="text-lg leading-none">{l.flag}</div>
+                          <div className="text-[11px] mt-1 truncate">{l.native}</div>
+                        </button>
+                      );
+                    })}
                   </div>
+                  <p className="text-[10px] text-[var(--color-text-tertiary)] mt-3">
+                    21 languages total — pick more from the header selector.
+                  </p>
                 </div>
               )}
 

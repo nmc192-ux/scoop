@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { isRtl } from "../lib/languages";
 
 export const useNewsStore = create(
   persist(
@@ -12,13 +13,19 @@ export const useNewsStore = create(
         document.documentElement.classList.toggle("dark", next);
       },
 
-      // ─── Language: 'en' | 'ur' ────────────────────────────────────
+      // ─── Language ───────────────────────────────────────────────────
+      // `language` is the user's chosen target (ISO 639-1). When
+      // `autoLanguage` is true, each article is shown in its source language
+      // and this field holds the most-recent explicit choice (used as a
+      // fallback for UI chrome).
       language: "en",
+      autoLanguage: true,
       setLanguage: (lang) => {
         set({ language: lang });
         document.documentElement.setAttribute("lang", lang);
-        document.documentElement.setAttribute("dir", lang === "ur" ? "rtl" : "ltr");
+        document.documentElement.setAttribute("dir", isRtl(lang) ? "rtl" : "ltr");
       },
+      setAutoLanguage: (v) => set({ autoLanguage: !!v }),
 
       // ─── Active Topics ─────────────────────────────────────────────
       activeTopics: ["top"],
@@ -116,6 +123,7 @@ export const useNewsStore = create(
       partialize: (state) => ({
         darkMode:            state.darkMode,
         language:            state.language,
+        autoLanguage:        state.autoLanguage,
         activeTopics:        state.activeTopics,
         savedArticles:       state.savedArticles,
         viewMode:            state.viewMode,
@@ -134,4 +142,4 @@ export const useNewsStore = create(
 const { darkMode, language } = useNewsStore.getState();
 document.documentElement.classList.toggle("dark", darkMode);
 document.documentElement.setAttribute("lang",  language || "en");
-document.documentElement.setAttribute("dir",   language === "ur" ? "rtl" : "ltr");
+document.documentElement.setAttribute("dir",   isRtl(language) ? "rtl" : "ltr");

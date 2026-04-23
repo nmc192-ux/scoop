@@ -6,10 +6,11 @@
  * users bail to the source site if extraction fails or they want the full page.
  */
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ExternalLink, Type, Sun, Bookmark, Share2 } from "lucide-react";
+import { X, ExternalLink, Type, Sun, Bookmark, Share2, Languages, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useReaderStore, useReaderArticle } from "../../hooks/useReader";
+import { useReaderStore, useReaderArticle, useTranslatedReader } from "../../hooks/useReader";
 import { useNewsStore } from "../../store/newsStore";
+import { isRtl, langFont, nativeName, LANG_BY_CODE } from "../../lib/languages";
 
 const FONT_SIZES = [
   { id: "sm",  label: "A",  size: 15 },
@@ -20,12 +21,22 @@ const FONT_SIZES = [
 
 export default function ReaderModal() {
   const { article, open, closeReader } = useReaderStore();
-  const { saveArticle, savedArticles } = useNewsStore();
+  const { saveArticle, savedArticles, language, autoLanguage } = useNewsStore();
   const url = open ? article?.url : null;
   const { data, isLoading, isError, error } = useReaderArticle(url);
 
+  const sourceLang = article?.language || data?.lang?.slice(0, 2) || "en";
+  // Target language: if user has picked an explicit language, translate to it
+  // unless it matches the article's source. "Auto" = show source language.
+  const targetLang = autoLanguage ? sourceLang : language;
+  const { html, title: translatedTitle, isTranslating } = useTranslatedReader(
+    data, targetLang, sourceLang
+  );
+
   const [fontIdx, setFontIdx] = useState(1);
   const [sepia,   setSepia]   = useState(false);
+  const rtl = isRtl(targetLang);
+  const font = langFont(targetLang);
 
   const isSaved = article && savedArticles?.some?.((a) => a.id === article.id);
 
@@ -86,6 +97,18 @@ export default function ReaderModal() {
               </button>
 
               <div className="flex items-center gap-1">
+                {/* Translation indicator — small pill showing target language */}
+                {sourceLang !== targetLang && (
+                  <span
+                    className="flex items-center gap-1 px-2 py-1 rounded-full bg-brand-blue/10 text-brand-blue text-[10px] font-bold uppercase tracking-wider"
+                    title={`Translated from ${nativeName(sourceLang)} to ${nativeName(targetLang)}`}
+                  >
+                    {isTranslating
+                      ? <Loader2 size={11} className="animate-spin" />
+                      : <Languages size={11} />}
+                    {LANG_BY_CODE[targetLang]?.flag} {targetLang.toUpperCase()}
+                  </span>
+                )}
                 <button
                   onClick={() => setFontIdx((i) => (i + 1) % FONT_SIZES.length)}
                   className="p-2 rounded-full hover:bg-[var(--color-surface2)]"
@@ -128,7 +151,11 @@ export default function ReaderModal() {
             </div>
 
             {/* ── Body ── */}
-            <div className="overflow-y-auto flex-1 px-5 sm:px-10 py-8" style={{ fontSize: fontPx }}>
+            <div
+              className="overflow-y-auto flex-1 px-5 sm:px-10 py-8"
+              style={{ fontSize: fontPx, fontFamily: font, direction: rtl ? "rtl" : "ltr", textAlign: rtl ? "right" : "left" }}
+              lang={targetLang}
+            >
               {article.image_url && (
                 <img
                   src={article.image_url}
@@ -142,7 +169,7 @@ export default function ReaderModal() {
                 {article.source_name} · {article.category}
               </p>
               <h1 className="text-2xl sm:text-3xl font-bold leading-tight mb-4">
-                {data?.title || article.title}
+                {translatedTitle || data?.title || article.title}
               </h1>
               {(data?.byline || article.author) && (
                 <p className="text-sm opacity-70 mb-6">
@@ -175,11 +202,11 @@ export default function ReaderModal() {
                 </div>
               )}
 
-              {data?.content && (
+              {html && (
                 <article
                   className="reader-body"
                   style={{ lineHeight: 1.7 }}
-                  dangerouslySetInnerHTML={{ __html: data.content }}
+                  dangerouslySetInnerHTML={{ __html: html }}
                 />
               )}
 

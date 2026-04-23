@@ -42,7 +42,8 @@ function initializeSchema(db) {
       credibility INTEGER DEFAULT 8,
       is_featured INTEGER DEFAULT 0,
       view_count  INTEGER DEFAULT 0,
-      tags        TEXT DEFAULT '[]'
+      tags        TEXT DEFAULT '[]',
+      language    TEXT DEFAULT 'en'
     );
 
     CREATE INDEX IF NOT EXISTS idx_articles_category   ON articles(category);
@@ -118,6 +119,17 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers(token);
   `);
 
+  // Lightweight migration: add `language` column on existing deployments.
+  try {
+    const cols = db.prepare("PRAGMA table_info(articles)").all();
+    if (!cols.some((c) => c.name === "language")) {
+      db.exec("ALTER TABLE articles ADD COLUMN language TEXT DEFAULT 'en'");
+      logger.info("Migrated articles table: +language");
+    }
+  } catch (err) {
+    logger.warn("Migration check failed", { error: err.message });
+  }
+
   // FTS5 full-text search virtual table + sync triggers
   try {
     db.exec(`
@@ -174,10 +186,11 @@ export function upsertArticle(article) {
   return getDb().prepare(`
     INSERT OR IGNORE INTO articles
       (id, title, description, content, url, image_url, source_name,
-       category, region, author, published_at, fetched_at, credibility, tags)
+       category, region, author, published_at, fetched_at, credibility, tags, language)
     VALUES
       (@id, @title, @description, @content, @url, @image_url, @source_name,
-       @category, @region, @author, @published_at, @fetched_at, @credibility, @tags)
+       @category, @region, @author, @published_at, @fetched_at, @credibility, @tags,
+       COALESCE(@language, 'en'))
   `).run(article);
 }
 
