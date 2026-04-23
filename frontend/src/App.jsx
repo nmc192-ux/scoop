@@ -10,6 +10,7 @@ import MarketStrip from "./components/news/MarketStrip";
 import MostReadSidebar from "./components/news/MostReadSidebar";
 import WeatherWidget from "./components/news/WeatherWidget";
 
+const LiveEventsView  = lazy(() => import("./components/live/LiveEventsView"));
 const VideoSection    = lazy(() => import("./components/news/VideoSection"));
 const LiveTVSection   = lazy(() => import("./components/news/LiveTVSection"));
 const XFeedSection    = lazy(() => import("./components/news/XFeedSection"));
@@ -56,6 +57,7 @@ export default function App() {
   const heroArticle  = featured[0] || null;
   const featuredGrid = featured.slice(1, 4);
   const showFeatured = activeTopics.includes("top") && !searchQuery;
+  const showingLive  = activeTopics.includes("live");
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] transition-colors duration-300">
@@ -116,7 +118,15 @@ export default function App() {
           )}
         </AnimatePresence>
 
+        {/* ── Live Events tab — replaces the normal feed grid ───── */}
+        {showingLive && (
+          <Suspense fallback={<SectionFallback />}>
+            <LiveEventsView />
+          </Suspense>
+        )}
+
         {/* ── Two-column layout: News + Desktop Sidebar ──────────── */}
+        {!showingLive && (
         <div className="lg:grid lg:grid-cols-[1fr_300px] lg:gap-6 lg:items-start">
 
           {/* ── LEFT: Article count header + grid ─────────────────── */}
@@ -188,14 +198,17 @@ export default function App() {
             <MostReadSidebar articles={articles} />
           </aside>
         </div>
+        )}
 
-        <Suspense fallback={<SectionFallback />}>
-          <VideoSection />
-          <LiveTVSection />
-          <MagazineSection />
-          <CarsSection />
-          <XFeedSection />
-        </Suspense>
+        {!showingLive && (
+          <Suspense fallback={<SectionFallback />}>
+            <VideoSection />
+            <LiveTVSection />
+            <MagazineSection />
+            <CarsSection />
+            <XFeedSection />
+          </Suspense>
+        )}
 
       </main>
 

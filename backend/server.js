@@ -18,6 +18,7 @@ import seoRouter         from "./src/routes/seo.js";
 import geoRouter         from "./src/routes/geo.js";
 import readerRouter      from "./src/routes/reader.js";
 import newsletterRouter  from "./src/routes/newsletter.js";
+import liveEventsRouter  from "./src/routes/liveEvents.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
 import { getDb } from "./src/models/database.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
@@ -120,6 +121,7 @@ app.use("/api/live-stream", liveStreamRouter); // YouTube RSS → current live v
 app.use("/api/geo",         geoRouter);        // IP → country / currency / timezone — 6h cache
 app.use("/api/reader",      readerRouter);     // Readability-powered article extraction — 12h cache
 app.use("/api/newsletter",  newsletterRouter); // subscribe / unsubscribe / daily digest
+app.use("/api/live-events", liveEventsRouter); // "Live" tab dossiers (AI-synthesized briefs + metrics)
 
 // Health
 app.get("/api/health", (req, res) => {

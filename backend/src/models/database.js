@@ -117,6 +117,25 @@ function initializeSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_subscribers_email ON subscribers(email);
     CREATE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers(token);
+
+    -- ─── Live Events (the "Live" tab) ──────────────────────────────────
+    -- One row per tracked global event. The full dossier (brief points +
+    -- metrics) is stored as JSON blobs so the shape can evolve without
+    -- migrations. Config lives in src/config/liveEvents.js; this table
+    -- just caches the synthesized output so the frontend reads quickly.
+    CREATE TABLE IF NOT EXISTS live_events (
+      id          TEXT PRIMARY KEY,
+      title       TEXT NOT NULL,
+      subtitle    TEXT,
+      emoji       TEXT,
+      status      TEXT DEFAULT 'active',
+      region      TEXT,
+      brief       TEXT DEFAULT '[]',    -- JSON: [{ ts, text, sources: [{name,url}] }, ...]
+      metrics     TEXT DEFAULT '{}',    -- JSON: { casualties: {...}, economicLoss: {...}, ... }
+      summary     TEXT,                 -- 1-2 sentence headline for the list view
+      updated_at  INTEGER NOT NULL,
+      ceasefire_at INTEGER              -- optional ISO timestamp as ms since epoch
+    );
   `);
 
   // Lightweight migration: add `language` column on existing deployments.
@@ -395,4 +414,87 @@ export function getAnalyticsSummary() {
     recentIngestions: db.prepare("SELECT * FROM ingestion_logs ORDER BY fetched_at DESC LIMIT 20").all(),
     sourceHealth:     getSourceHealth(),
   };
+}
+
+// ─── Live Events (dossier cache) ──────────────────────────────────────────
+// Articles related to an event are looked up via keyword OR-match. We rank
+// preferred sources (e.g. Al Jazeera for Middle East) higher so the
+// synthesizer has trustworthy material to work with.
+export function findArticlesForEvent({ keywords = [], preferredSources = [], limit = 30 } = {}) {
+  if (keywords.length === 0) return [];
+  const db = getDb();
+  const likeClauses = keywords.map(() => `(LOWER(title) LIKE ? OR LOWER(description) LIKE ?)`).join(" OR ");
+  const params = keywords.flatMap((k) => [`%${k.toLowerCase()}%`, `%${k.toLowerCase()}%`]);
+  // 7-day lookback window — older context rarely helps a live brief.
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const rows = db.prepare(`
+    SELECT id, title, description, url, source_name, published_at, category
+    FROM articles
+    WHERE published_at > ? AND (${likeClauses})
+    ORDER BY published_at DESC
+    LIMIT ?
+  `).all(cutoff, ...params, Math.min(limit * 3, 200));
+
+  // Boost preferred sources, then trim.
+  const prefSet = new Set(preferredSources.map((s) => s.toLowerCase()));
+  rows.sort((a, b) => {
+    const aPref = prefSet.has((a.source_name || "").toLowerCase()) ? 1 : 0;
+    const bPref = prefSet.has((b.source_name || "").toLowerCase()) ? 1 : 0;
+    if (aPref !== bPref) return bPref - aPref;
+    return b.published_at - a.published_at;
+  });
+  return rows.slice(0, limit);
+}
+
+export function upsertLiveEvent(evt) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO live_events (id, title, subtitle, emoji, status, region, brief, metrics, summary, updated_at, ceasefire_at)
+    VALUES (@id, @title, @subtitle, @emoji, @status, @region, @brief, @metrics, @summary, @updated_at, @ceasefire_at)
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title,
+      subtitle = excluded.subtitle,
+      emoji = excluded.emoji,
+      status = excluded.status,
+      region = excluded.region,
+      brief = excluded.brief,
+      metrics = excluded.metrics,
+      summary = excluded.summary,
+      updated_at = excluded.updated_at,
+      ceasefire_at = excluded.ceasefire_at
+  `).run({
+    id: evt.id,
+    title: evt.title,
+    subtitle: evt.subtitle || null,
+    emoji: evt.emoji || null,
+    status: evt.status || "active",
+    region: evt.region || null,
+    brief: JSON.stringify(evt.brief || []),
+    metrics: JSON.stringify(evt.metrics || {}),
+    summary: evt.summary || null,
+    updated_at: evt.updated_at || Date.now(),
+    ceasefire_at: evt.ceasefire_at || null,
+  });
+}
+
+function hydrateEvent(row) {
+  if (!row) return null;
+  let brief = [];
+  let metrics = {};
+  try { brief = JSON.parse(row.brief || "[]"); } catch {}
+  try { metrics = JSON.parse(row.metrics || "{}"); } catch {}
+  return { ...row, brief, metrics };
+}
+
+export function listLiveEvents() {
+  const rows = getDb().prepare(`
+    SELECT id, title, subtitle, emoji, status, region, summary, updated_at, ceasefire_at
+    FROM live_events ORDER BY updated_at DESC
+  `).all();
+  return rows;
+}
+
+export function getLiveEvent(id) {
+  const row = getDb().prepare(`SELECT * FROM live_events WHERE id = ?`).get(id);
+  return hydrateEvent(row);
 }
