@@ -70,13 +70,9 @@ export default function App() {
         {/* ── Stats bar ──────────────────────────────────────────────── */}
         <StatsBar />
 
-        <AdSenseBanner
-          slotName="banner"
-          config={adSenseConfig}
-          className="mb-6"
-          label="Sponsored"
-          format="auto"
-        />
+        {/* Top banner removed: hurts CTR vs in-feed units AND fights hero
+            visibility above the fold. Keeping the sidebar unit on desktop
+            and an in-feed unit below the grid is plenty. */}
 
         {/* ── Mobile-only: Markets at top (collapsed) ─────────────── */}
         <div className="lg:hidden">
@@ -241,8 +237,8 @@ export default function App() {
         </div>
       </footer>
 
-      {/* ── Sticky mobile anchor ad (bottom, dismissible) ──────────── */}
-      <MobileAnchorAd config={adSenseConfig} />
+      {/* Sticky mobile anchor ad removed — too invasive on small screens,
+          and our in-feed inline unit covers mobile monetization. */}
 
       {/* ── In-app reader + onboarding ────────────────────────────── */}
       <ReaderModal />
