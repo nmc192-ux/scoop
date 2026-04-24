@@ -5,8 +5,18 @@ import { formatDistanceToNow } from "date-fns";
 import { useNewsStore } from "../../store/newsStore";
 import { useTranslatedTexts } from "../../hooks/useTranslation";
 import { useReaderStore } from "../../hooks/useReader";
+import { track, trackShare, trackSave, trackUnsave, trackOutboundClick } from "../../lib/track";
 import PaywallCTA from "../ads/PaywallCTA";
 import clsx from "clsx";
+
+// Append scoopfeeds-visible UTM so clicks from shared posts land with a source
+// marker the frontend/GA4 can attribute. Share URLs point at scoopfeeds.com
+// (our own SSR article page), not at the original source — so UTMs here
+// don't leak to publishers.
+function withShareUtm(url, network) {
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}utm_source=share_${network}&utm_medium=social&utm_campaign=scoop`;
+}
 
 const TOPIC_COLORS = {
   top: "#FF3B30", politics: "#007AFF", international: "#5856D6",
@@ -76,7 +86,13 @@ export default function NewsCard({ article, index = 0, size = "normal" }) {
 
   const handleSave = (e) => {
     e.preventDefault(); e.stopPropagation();
-    saved ? unsaveArticle(article.id) : saveArticle(article);
+    if (saved) {
+      unsaveArticle(article.id);
+      trackUnsave(article.id, article.category);
+    } else {
+      saveArticle(article);
+      trackSave(article.id, article.category);
+    }
   };
 
   const handleShare = (e) => {
@@ -86,20 +102,22 @@ export default function NewsCard({ article, index = 0, size = "normal" }) {
 
   const shareVia = (platform) => (e) => {
     e.preventDefault(); e.stopPropagation();
+    const shareUrlWithUtm = withShareUtm(shareUrl, platform);
     const text = encodeURIComponent(article.title);
-    const url = encodeURIComponent(shareUrl);
+    const url = encodeURIComponent(shareUrlWithUtm);
     const targets = {
       x:        `https://twitter.com/intent/tweet?text=${text}&url=${url}`,
       whatsapp: `https://wa.me/?text=${text}%20${url}`,
       facebook: `https://www.facebook.com/sharer/sharer.php?u=${url}`,
       linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${url}`,
     };
+    trackShare(article.id, platform);
     if (platform === "copy") {
-      navigator.clipboard.writeText(shareUrl);
+      navigator.clipboard.writeText(shareUrlWithUtm);
       setCopied(true);
       setTimeout(() => { setCopied(false); setShowShare(false); }, 1500);
     } else if (platform === "native" && navigator.share) {
-      navigator.share({ title: article.title, url: shareUrl }).catch(() => {});
+      navigator.share({ title: article.title, url: shareUrlWithUtm }).catch(() => {});
       setShowShare(false);
     } else {
       window.open(targets[platform], "_blank", "noopener,noreferrer,width=600,height=500");
@@ -118,8 +136,12 @@ export default function NewsCard({ article, index = 0, size = "normal" }) {
         href={article.url}
         onClick={(e) => {
           // If user cmd/ctrl/middle-clicks or holds shift, let the browser open the source URL.
-          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+            trackOutboundClick(article.id, article.category, article.url);
+            return;
+          }
           e.preventDefault();
+          track("reader_open", { articleId: article.id, category: article.category });
           openReader(article);
         }}
         target="_blank" rel="noopener noreferrer" className="block">
@@ -254,7 +276,10 @@ export default function NewsCard({ article, index = 0, size = "normal" }) {
         <a
           href={article.url} target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-1 text-xs font-medium text-brand-blue hover:text-brand-indigo transition-colors"
-          onClick={e => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            trackOutboundClick(article.id, article.category, article.url);
+          }}
         >
           {isUrdu ? "پڑھیں" : "Read"} <ExternalLink size={11} />
         </a>

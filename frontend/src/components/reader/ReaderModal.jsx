@@ -6,11 +6,24 @@
  * users bail to the source site if extraction fails or they want the full page.
  */
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ExternalLink, Type, Sun, Bookmark, Share2, Languages, Loader2 } from "lucide-react";
+import { X, ExternalLink, Type, Sun, Bookmark, Share2, Languages, Loader2, ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useReaderStore, useReaderArticle, useTranslatedReader } from "../../hooks/useReader";
 import { useNewsStore } from "../../store/newsStore";
 import { isRtl, langFont, nativeName, LANG_BY_CODE } from "../../lib/languages";
+import { track, trackShare, trackOutboundClick, trackSave } from "../../lib/track";
+
+// Fetches 4 related stories in the same category, used by the recirculation
+// block at the bottom of the reader. Cached per category to avoid re-fetching
+// as the user jumps between articles in the same topic.
+async function fetchRelated(category) {
+  if (!category) return [];
+  const res = await fetch(`/api/news?category=${encodeURIComponent(category)}&limit=8`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.articles || data.data || [];
+}
 
 const FONT_SIZES = [
   { id: "sm",  label: "A",  size: 15 },
@@ -20,10 +33,21 @@ const FONT_SIZES = [
 ];
 
 export default function ReaderModal() {
-  const { article, open, closeReader } = useReaderStore();
+  const { article, open, closeReader, openReader } = useReaderStore();
   const { saveArticle, savedArticles, language, autoLanguage } = useNewsStore();
   const url = open ? article?.url : null;
   const { data, isLoading, isError, error } = useReaderArticle(url);
+
+  // Related stories — fetched only once the modal is open and we know the
+  // article's category. Cached for 2 minutes to avoid thrashing when the user
+  // jumps between articles.
+  const { data: related = [] } = useQuery({
+    queryKey: ["related", article?.category],
+    queryFn:  () => fetchRelated(article?.category),
+    enabled:  open && !!article?.category,
+    staleTime: 2 * 60 * 1000,
+  });
+  const relatedFiltered = related.filter((r) => r.id !== article?.id).slice(0, 3);
 
   const sourceLang = article?.language || data?.lang?.slice(0, 2) || "en";
   // Target language: if user has picked an explicit language, translate to it
@@ -57,11 +81,29 @@ export default function ReaderModal() {
 
   const handleShare = () => {
     if (!article) return;
+    const network = navigator.share ? "native" : "copy";
+    trackShare(article.id, network);
     if (navigator.share) {
       navigator.share({ title: article.title, url: article.url }).catch(() => {});
     } else {
       navigator.clipboard?.writeText(article.url);
     }
+  };
+
+  const handleSaveClick = () => {
+    if (!article) return;
+    saveArticle?.(article);
+    trackSave(article.id, article.category);
+  };
+
+  const handleSourceClick = () => {
+    if (!article) return;
+    trackOutboundClick(article.id, article.category, article.url);
+  };
+
+  const handleRelatedClick = (rel) => {
+    track("reader_open", { articleId: rel.id, category: rel.category, metadata: { via: "recirculation" } });
+    openReader(rel);
   };
 
   return (
@@ -125,7 +167,7 @@ export default function ReaderModal() {
                   <Sun size={16} />
                 </button>
                 <button
-                  onClick={() => saveArticle?.(article)}
+                  onClick={handleSaveClick}
                   className={`p-2 rounded-full ${isSaved ? "bg-brand-blue/20 text-brand-blue" : "hover:bg-[var(--color-surface2)]"}`}
                   aria-label="Save article"
                 >
@@ -142,6 +184,7 @@ export default function ReaderModal() {
                   href={article.url}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={handleSourceClick}
                   className="ml-1 flex items-center gap-1 text-xs font-semibold text-brand-blue hover:underline px-2 py-1 rounded whitespace-nowrap"
                 >
                   <ExternalLink size={13} />
@@ -195,6 +238,7 @@ export default function ReaderModal() {
                     href={article.url}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={handleSourceClick}
                     className="inline-block px-4 py-2 rounded-full bg-brand-blue text-white text-sm font-semibold"
                   >
                     Read on {new URL(article.url).hostname}
@@ -213,8 +257,48 @@ export default function ReaderModal() {
               {data?.length > 0 && (
                 <p className="text-xs opacity-50 mt-10 pt-6 border-t border-[var(--color-border)]">
                   Extracted from {new URL(article.url).hostname} · approx {Math.max(1, Math.round(data.length / 1100))} min read ·{" "}
-                  <a href={article.url} target="_blank" rel="noopener noreferrer" className="underline">original</a>
+                  <a href={article.url} target="_blank" rel="noopener noreferrer" onClick={handleSourceClick} className="underline">original</a>
                 </p>
+              )}
+
+              {/* Continue reading — recirculation block. Raises pages-per-session
+                  and gives us a second shot at monetizing the engaged reader. */}
+              {relatedFiltered.length > 0 && (
+                <section className="mt-10 pt-8 border-t border-[var(--color-border)]">
+                  <h2 className="text-xs uppercase tracking-wider opacity-60 mb-4">
+                    Continue reading · More in {article.category}
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {relatedFiltered.map((rel) => (
+                      <button
+                        key={rel.id}
+                        onClick={() => handleRelatedClick(rel)}
+                        className="text-left p-3 rounded-xl border border-[var(--color-border)] hover:border-brand-blue transition-colors group"
+                      >
+                        {rel.image_url && (
+                          <div className="aspect-video overflow-hidden rounded-lg mb-2 bg-[var(--color-surface2)]">
+                            <img
+                              src={rel.image_url}
+                              alt=""
+                              loading="lazy"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              onError={(e) => { e.target.style.display = "none"; }}
+                            />
+                          </div>
+                        )}
+                        <p className="text-[10px] uppercase tracking-wider opacity-60 mb-1">
+                          {rel.source_name}
+                        </p>
+                        <p className="text-sm font-semibold leading-snug line-clamp-3">
+                          {rel.title}
+                        </p>
+                        <span className="inline-flex items-center gap-1 text-xs text-brand-blue mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          Read <ArrowRight size={11} />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
           </motion.div>

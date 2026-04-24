@@ -11,8 +11,9 @@ import { Bell, Check, Loader2 } from "lucide-react";
 import axios from "axios";
 import { useNewsStore } from "../../store/newsStore";
 import { useGeo } from "../../hooks/useGeo";
+import { track } from "../../lib/track";
 
-export default function NewsletterSignup({ compact = false }) {
+export default function NewsletterSignup({ compact = false, source = "inline" }) {
   const { language, preferredTopics } = useNewsStore();
   const { countryCode } = useGeo();
   const [email, setEmail] = useState("");
@@ -27,6 +28,7 @@ export default function NewsletterSignup({ compact = false }) {
       setError("Please enter a valid email"); setState("error"); return;
     }
     setState("loading"); setError("");
+    track("newsletter_signup_start", { metadata: { source } });
     try {
       await axios.post("/api/newsletter/subscribe", {
         email: val,
@@ -35,6 +37,7 @@ export default function NewsletterSignup({ compact = false }) {
         topics: preferredTopics,
       });
       setState("done");
+      track("newsletter_signup_complete", { metadata: { source, countryCode, language } });
     } catch (err) {
       setError(err?.response?.data?.error || "Something went wrong");
       setState("error");

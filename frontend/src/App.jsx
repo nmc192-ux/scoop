@@ -31,6 +31,7 @@ import AffiliateWidget from "./components/ads/AffiliateWidget";
 import SkimlinksLoader from "./components/ads/SkimlinksLoader";
 import ReaderModal from "./components/reader/ReaderModal";
 import OnboardingModal from "./components/onboarding/OnboardingModal";
+import NewsletterCaptureModal from "./components/newsletter/NewsletterCaptureModal";
 
 export default function App() {
   const { activeTopics, searchQuery, lastRefreshed, language, savedArticles } = useNewsStore();
@@ -265,9 +266,10 @@ export default function App() {
       {/* Sticky mobile anchor ad removed — too invasive on small screens,
           and our in-feed inline unit covers mobile monetization. */}
 
-      {/* ── In-app reader + onboarding ────────────────────────────── */}
+      {/* ── In-app reader + onboarding + newsletter capture ─────── */}
       <ReaderModal />
       <OnboardingModal />
+      <NewsletterCaptureModal />
 
       {/* ── Refresh toast ──────────────────────────────────────────── */}
       <AnimatePresence>
