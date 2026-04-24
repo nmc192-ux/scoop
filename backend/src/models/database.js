@@ -307,6 +307,69 @@ export function getFeaturedArticles(limit = 7) {
 export function getArticleById(id)    { return getDb().prepare("SELECT * FROM articles WHERE id = ?").get(id); }
 export function incrementViewCount(id){ getDb().prepare("UPDATE articles SET view_count = view_count + 1 WHERE id = ?").run(id); }
 
+// Cross-source coverage — other sources covering the same story, used by the
+// article SSR page to build a "Also covered by" block. This is what turns our
+// page from "scraped rewrite" into aggregation with genuine editorial value.
+// Matches on 2-3 meaningful title tokens across the last 3 days, excluding
+// the article itself and its own source.
+export function listAlternateCoverage(article, limit = 4) {
+  if (!article || !article.title) return [];
+  const tokens = article.title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 4)
+    .filter((t) => !STOPWORDS.has(t))
+    .slice(0, 5);
+  if (tokens.length < 2) return [];
+  const cutoff = Date.now() - 3 * 24 * 60 * 60 * 1000;
+  const likes = tokens.map(() => `LOWER(title) LIKE ?`).join(" OR ");
+  const params = [
+    article.id,
+    article.source_name || "",
+    cutoff,
+    ...tokens.map((t) => `%${t}%`),
+    limit,
+  ];
+  return getDb().prepare(`
+    SELECT id, title, url, source_name, published_at, category, image_url
+    FROM articles
+    WHERE id != ? AND source_name != ? AND published_at > ?
+      AND (${likes})
+    ORDER BY published_at DESC
+    LIMIT ?
+  `).all(...params);
+}
+
+// Related stories — same category, different URL, sorted by recency. Used on
+// the article SSR page to increase internal linking + pages-per-session.
+export function listRelatedStories(article, limit = 5) {
+  if (!article) return [];
+  return getDb().prepare(`
+    SELECT id, title, source_name, published_at, category, image_url
+    FROM articles
+    WHERE id != ? AND category = ? AND published_at > ?
+    ORDER BY published_at DESC
+    LIMIT ?
+  `).all(
+    article.id,
+    article.category,
+    Date.now() - 3 * 24 * 60 * 60 * 1000,
+    limit,
+  );
+}
+
+const STOPWORDS = new Set([
+  "about", "after", "again", "against", "could", "during", "first", "from",
+  "have", "having", "here", "into", "more", "most", "over", "says", "such",
+  "their", "there", "these", "they", "this", "through", "under", "until",
+  "what", "when", "where", "which", "while", "with", "would", "your", "that",
+  "will", "been", "were", "also", "just", "than", "them", "then", "some",
+  "very", "only", "even", "many", "much", "must", "make", "made", "back",
+  "before", "between", "other", "still", "those", "while", "against", "among",
+  "because", "being", "both", "each", "every", "however", "same", "should",
+]);
+
 export function getTopicCounts() {
   return getDb().prepare(`SELECT category, COUNT(*) as count FROM articles GROUP BY category ORDER BY count DESC`).all();
 }

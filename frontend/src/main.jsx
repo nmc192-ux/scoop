@@ -23,3 +23,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
+
+// Register the service worker in production builds only. In dev the Vite HMR
+// server handles assets; a SW would cache stale bundles across reloads.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // Registration failures are non-fatal — the app runs fine without a SW.
+    });
+  });
+}

@@ -1,0 +1,48 @@
+{
+  "name": "Scoop — News, sniffed out.",
+  "short_name": "Scoop",
+  "description": "Your intelligent news aggregator. The day's biggest stories from trusted sources worldwide, with cross-source context. English and Urdu.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fafafa",
+  "theme_color": "#DC2626",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["news", "magazines"],
+  "icons": [
+    {
+      "src": "/news-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Top Stories",
+      "short_name": "Top",
+      "url": "/?topic=top&source=pwa",
+      "icons": [{ "src": "/news-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Live Events",
+      "short_name": "Live",
+      "url": "/?topic=live&source=pwa",
+      "icons": [{ "src": "/news-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Saved",
+      "short_name": "Saved",
+      "url": "/?topic=saved&source=pwa",
+      "icons": [{ "src": "/news-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

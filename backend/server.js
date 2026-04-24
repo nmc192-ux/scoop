@@ -19,6 +19,7 @@ import geoRouter         from "./src/routes/geo.js";
 import readerRouter      from "./src/routes/reader.js";
 import newsletterRouter  from "./src/routes/newsletter.js";
 import liveEventsRouter  from "./src/routes/liveEvents.js";
+import trackRouter       from "./src/routes/track.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
 import { getDb } from "./src/models/database.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
@@ -122,6 +123,7 @@ app.use("/api/geo",         geoRouter);        // IP → country / currency / ti
 app.use("/api/reader",      readerRouter);     // Readability-powered article extraction — 12h cache
 app.use("/api/newsletter",  newsletterRouter); // subscribe / unsubscribe / daily digest
 app.use("/api/live-events", liveEventsRouter); // "Live" tab dossiers (AI-synthesized briefs + metrics)
+app.use("/api/track",       trackRouter);      // frontend event beacons (page_view, share, save, dwell, etc.)
 
 // Health
 app.get("/api/health", (req, res) => {

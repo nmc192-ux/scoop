@@ -24,6 +24,7 @@ import { LoadingHero } from "./components/ui/LoadingCard";
 import { BackendOffline } from "./components/ui/EmptyState";
 import { useNews, useFeatured, useHealth, usePublicConfig, useRefresh } from "./hooks/useNews";
 import { useNewsStore } from "./store/newsStore";
+import { trackPageView, attachEngagementObservers } from "./lib/track";
 import ScoopMascot from "./components/mascot/KhabriMascot";
 import { AdSenseBanner, AdSenseSidebar, AdSenseUnit } from "./components/ads/AdSense";
 import ReaderModal from "./components/reader/ReaderModal";
@@ -50,6 +51,15 @@ export default function App() {
       es.onerror = () => es.close();
     } catch {}
     return () => es?.close();
+  }, []);
+
+  // Analytics: fire a page_view on load + wire up scroll/dwell observers.
+  // Cheap and bounded — all deduped server-side via the event allowlist.
+  useEffect(() => {
+    trackPageView({ topics: activeTopics, language });
+    attachEngagementObservers();
+    // Intentionally run once on mount; topic-change events are fired from TopicNav.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (isOffline) return <BackendOffline />;
@@ -233,6 +243,17 @@ export default function App() {
               <span>•</span>
               <span className="text-brand-green">● Live</span>
             </div>
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-4 text-xs text-[var(--color-text-tertiary)]">
+            <a href="/about" className="hover:text-[var(--color-text)] transition-colors">About</a>
+            <span>·</span>
+            <a href="/editorial-policy" className="hover:text-[var(--color-text)] transition-colors">Editorial policy</a>
+            <span>·</span>
+            <a href="/corrections" className="hover:text-[var(--color-text)] transition-colors">Corrections</a>
+            <span>·</span>
+            <a href="/contact" className="hover:text-[var(--color-text)] transition-colors">Contact</a>
+            <span>·</span>
+            <a href="/privacy" className="hover:text-[var(--color-text)] transition-colors">Privacy</a>
           </div>
         </div>
       </footer>
