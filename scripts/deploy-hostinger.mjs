@@ -12,7 +12,7 @@
  */
 
 import { execSync } from "child_process";
-import { createReadStream, statSync, existsSync, mkdirSync, rmSync } from "fs";
+import { createReadStream, statSync, existsSync, mkdirSync, rmSync, readdirSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -29,37 +29,120 @@ if (!API_TOKEN) {
   console.error("❌  HOSTINGER_API_TOKEN is required");
   process.exit(1);
 }
+// Guard against the common "export HOSTINGER_API_TOKEN=your_token" slip — any
+// obvious placeholder would just produce a confusing 401 at the API layer.
+if (/^(your_token|your-token|YOUR_TOKEN|xxx+|placeholder)$/i.test(API_TOKEN)) {
+  console.error("❌  HOSTINGER_API_TOKEN looks like a placeholder. Paste your real token.");
+  console.error("    Generate one at: https://hpanel.hostinger.com/profile/api");
+  process.exit(1);
+}
+if (API_TOKEN.length < 24) {
+  console.error(`❌  HOSTINGER_API_TOKEN looks too short (${API_TOKEN.length} chars). Expected a real bearer token.`);
+  process.exit(1);
+}
 
 // ── Lazy-install deps if needed ─────────────────────────────────────────────
+// Install both packages in one call — two sequential `npm install --no-save`
+// invocations have been observed to undo each other on fresh machines.
 async function ensureDeps() {
   const deps = ["axios", "tus-js-client"];
+  const missing = [];
   for (const dep of deps) {
-    try { await import(dep); } catch {
-      console.log(`📦  Installing ${dep}…`);
-      execSync(`npm install --no-save ${dep}`, { stdio: "inherit" });
+    try { await import(dep); } catch { missing.push(dep); }
+  }
+  if (missing.length === 0) return;
+  console.log(`📦  Installing ${missing.join(", ")}…`);
+  execSync(`npm install --no-save ${missing.join(" ")}`, { stdio: "inherit", cwd: ROOT });
+  // Re-verify — if install churn dropped something, fail loudly rather than
+  // mid-run.
+  for (const dep of deps) {
+    try { await import(dep); } catch (err) {
+      throw new Error(`Failed to import ${dep} after install: ${err.message}`);
     }
   }
 }
 
 // ── Build archive ────────────────────────────────────────────────────────────
+// Strategy: archive ONLY files tracked by git (via `git ls-files`) plus the
+// frontend build output. This guarantees we never ship:
+//   - the local SQLite database (backend/data/news.db) which would overwrite prod
+//   - node_modules / .git / .claude / stray local files
+//   - secrets in untracked .env files
+//   - previous deploy zips
 function buildArchive() {
   console.log("🗜   Building deployment archive…");
   if (existsSync(ARCHIVE)) rmSync(ARCHIVE);
 
-  execSync(
-    `cd "${ROOT}" && zip -r "${ARCHIVE}" . \
-      --exclude "*/node_modules/*" \
-      --exclude "*/.git/*" \
-      --exclude "*/backend/data/*" \
-      --exclude "*/backend/logs/*" \
-      --exclude "*/frontend/dist/*" \
-      --exclude "*/.env.local" \
-      --exclude "*.zip"`,
-    { stdio: "inherit" }
-  );
+  // Collect the file list. git ls-files respects .gitignore and lists tracked
+  // paths relative to the repo root.
+  let trackedFiles;
+  try {
+    trackedFiles = execSync("git ls-files -z", { cwd: ROOT })
+      .toString("utf8")
+      .split("\0")
+      .filter(Boolean);
+  } catch (err) {
+    throw new Error(`git ls-files failed — are you inside a git repo? ${err.message}`);
+  }
+  if (trackedFiles.length === 0) {
+    throw new Error("git ls-files returned no files — nothing to deploy");
+  }
+
+  // frontend/dist is in .gitignore but must ship. Fail early if the build
+  // hasn't been run, rather than deploying a stale / empty dist.
+  const distDir = path.join(ROOT, "frontend/dist");
+  if (!existsSync(distDir) || !existsSync(path.join(distDir, "index.html"))) {
+    throw new Error("frontend/dist/index.html not found — run `npm run build --prefix frontend` before deploying");
+  }
+  const distFiles = listDir(distDir)
+    .map((abs) => path.relative(ROOT, abs).split(path.sep).join("/"));
+
+  // Defense-in-depth: drop anything matching these patterns even if
+  // accidentally tracked. The local news.db is the one that would destroy prod.
+  const DANGEROUS = [
+    /(^|\/)backend\/data\//,
+    /(^|\/)backend\/logs\//,
+    /(^|\/)\.env(\.|$)/,
+    /(^|\/)node_modules\//,
+    /(^|\/)\.git\//,
+    /(^|\/)\.claude\//,
+    /\.zip$/,
+    /(^|\/)\.DS_Store$/,
+  ];
+  const files = Array.from(new Set([...trackedFiles, ...distFiles]))
+    .filter((f) => !DANGEROUS.some((rx) => rx.test(f)));
+
+  // Write the list to a temp file and feed it to zip via -@. This avoids
+  // command-line length limits on large repos.
+  const listFile = path.join(ROOT, ".deploy-filelist.txt");
+  execSync(`printf '%s\\n' ${files.map(shQuote).join(" ")} > "${listFile}"`, { shell: "/bin/sh" });
+
+  try {
+    execSync(`cd "${ROOT}" && zip -q "${ARCHIVE}" -@ < "${listFile}"`, {
+      stdio: ["inherit", "inherit", "inherit"],
+      shell: "/bin/sh",
+    });
+  } finally {
+    rmSync(listFile, { force: true });
+  }
 
   const size = (statSync(ARCHIVE).size / 1024).toFixed(0);
-  console.log(`✅  Archive ready: ${ARCHIVE} (${size} KB)`);
+  console.log(`✅  Archive ready: ${ARCHIVE} (${size} KB, ${files.length} files)`);
+}
+
+function listDir(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listDir(abs));
+    else if (entry.isFile()) out.push(abs);
+  }
+  return out;
+}
+
+function shQuote(s) {
+  // POSIX-safe single-quote escape for use inside a shell command.
+  return `'${String(s).replace(/'/g, `'\\''`)}'`;
 }
 
 // ── Hostinger API helpers ────────────────────────────────────────────────────
