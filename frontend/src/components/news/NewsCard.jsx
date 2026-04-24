@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useNewsStore } from "../../store/newsStore";
 import { useTranslatedTexts } from "../../hooks/useTranslation";
 import { useReaderStore } from "../../hooks/useReader";
+import PaywallCTA from "../ads/PaywallCTA";
 import clsx from "clsx";
 
 const TOPIC_COLORS = {
@@ -165,6 +166,7 @@ export default function NewsCard({ article, index = 0, size = "normal" }) {
                 {article.source_name}
               </span>
               <CredibilityDots score={article.credibility} />
+              <PaywallCTA sourceName={article.source_name} />
             </div>
             <div className="flex items-center gap-1 text-xs text-[var(--color-text-tertiary)]">
               <Clock size={10} />
