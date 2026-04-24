@@ -18,6 +18,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+
+      - name: Build frontend
+        # deploy-hostinger.mjs ships frontend/dist as part of the archive; this
+        # step produces that dist. Without it the deploy script refuses to run.
+        run: npm run build --prefix frontend
 
       - name: Deploy to Hostinger (scoopfeeds.com)
         env:
