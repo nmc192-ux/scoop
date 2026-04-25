@@ -18,6 +18,7 @@ import {
 import { composeAllPlatforms } from "./socialComposer.js";
 import { ensureCard } from "./cardRenderer.js";
 import { isBlueskyConfigured, postToBluesky } from "./blueskyClient.js";
+import { isThreadsConfigured, postToThreads } from "./threadsClient.js";
 import { logger } from "./logger.js";
 
 const SITE = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com").replace(/\/+$/, "");
@@ -40,6 +41,20 @@ const ADAPTERS = {
         thumbBuffer,
       });
       return { url: out.url, platformPostId: out.uri };
+    },
+  },
+
+  threads: {
+    name: "threads",
+    minIntervalMs: 60 * 60 * 1000, // 60 min — Threads engagement peaks at slower cadence
+    composeKey: "threads", // matches socialComposer's platform key
+    enabled: isThreadsConfigured,
+    async post(article, composed) {
+      // Threads ingests images by URL (no blob upload). Pass our /api/cards
+      // endpoint so the post unfurls with the branded card.
+      const imageUrl = `${SITE}/api/cards/og/${encodeURIComponent(article.id)}.png`;
+      const out = await postToThreads({ text: composed.caption, imageUrl });
+      return { url: out.url, platformPostId: out.id };
     },
   },
 };

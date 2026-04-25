@@ -18,6 +18,10 @@ backend/data/cards/
 # unset; treat like any other secret and never commit.
 backend/data/vapid.json
 
+# Threads long-lived token — persisted by threadsClient.js on first boot.
+# Contains the access token + expiry; treat like a secret.
+backend/data/threads-token.json
+
 # Logs
 *.log
 backend/logs/
