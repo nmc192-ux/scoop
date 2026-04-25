@@ -9,6 +9,8 @@ import {
   getArticleCount,
   getAnalyticsSummary,
   trackEvent,
+  getUserBySession,
+  getUserCategoryWeights,
 } from "../models/database.js";
 import { getSchedulerStatus, triggerManualRefresh } from "../services/scheduler.js";
 import { TOPICS, TAB_CATEGORIES, COUNTRY_REGIONS } from "../config/sources.js";
@@ -89,7 +91,7 @@ router.get("/", (req, res) => {
       }
     }
 
-    const articles = getArticles({
+    let articles = getArticles({
       category: !tab ? (category || null) : null, // legacy path only
       categories: resolvedCategories,
       regions: resolvedRegions,
@@ -99,6 +101,37 @@ router.get("/", (req, res) => {
       minCredibility: parseInt(minCredibility),
       source: source || null,
     });
+
+    // ── Personalized re-ranking (authenticated users only) ────────────
+    // When the user is signed in and has at least 3 articles of history,
+    // we re-rank the tail of the list (skipping the top 4 "breaking" pins)
+    // by applying a per-category boost derived from their reading signals.
+    // The boost is bounded to [1.0, 1.6] so it nudges rather than swamps
+    // the editorial recency ordering.
+    try {
+      const raw          = req.headers.cookie || "";
+      const cookieMatch  = raw.match(/(?:^|;\s*)scoop_session=([^;]+)/);
+      const sessionToken = cookieMatch ? cookieMatch[1] : null;
+      if (sessionToken && articles.length > 4) {
+        const user = getUserBySession(sessionToken);
+        if (user) {
+          const weights = getUserCategoryWeights(user.id);
+          if (Object.keys(weights).length >= 1) {
+            const maxW = Math.max(...Object.values(weights));
+            if (maxW > 0) {
+              const pinned = articles.slice(0, 4);
+              const tail   = articles.slice(4).map(a => ({
+                ...a,
+                _boost: 1.0 + 0.6 * ((weights[a.category] || 0) / maxW),
+              }));
+              // Stable sort: preserve relative order within the same boost tier.
+              tail.sort((a, b) => b._boost - a._boost);
+              articles = [...pinned, ...tail.map(({ _boost, ...rest }) => rest)];
+            }
+          }
+        }
+      }
+    } catch (_e) { /* personalization is best-effort; never block the response */ }
 
     // Track analytics (privacy-safe, no PII)
     trackEvent("page_view", {

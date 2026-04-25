@@ -1,6 +1,6 @@
 import express, { Router } from "express";
 import crypto from "crypto";
-import { trackEvent } from "../models/database.js";
+import { trackEvent, getUserBySession, recordUserView } from "../models/database.js";
 import { logger } from "../services/logger.js";
 
 const router = Router();
@@ -14,6 +14,15 @@ router.use((req, _res, next) => {
   }
   next();
 });
+
+// Events that carry per-user reading signals we want to record in
+// user_article_views for personalized feed ranking.
+const USER_SIGNAL_EVENTS = new Set([
+  "article_view",
+  "dwell_time_30s",
+  "dwell_time_60s",
+  "save_article",
+]);
 
 // Whitelist of accepted event types. Anything else is silently dropped to
 // keep the analytics table clean and prevent abuse.
@@ -57,12 +66,32 @@ function hashUa(ua) {
 // Body shape for a single event:
 //   { event, articleId?, category?, metadata? }
 // Privacy: IP + UA are SHA-256 hashed before storage.
+//
+// When the request carries a valid scoop_session cookie the handler also
+// records per-user reading signals into user_article_views so the
+// personalized feed re-ranking has data to work with.
 router.post("/", (req, res) => {
   try {
     const ipHash = hashIp(req.ip);
     const uaHash = hashUa(req.get("user-agent"));
     const incoming = Array.isArray(req.body?.events) ? req.body.events : [req.body || {}];
     let accepted = 0;
+
+    // Lazily resolve the session user — only pay the DB cost once per
+    // request, and only when there's actually a session cookie.
+    // Uses manual header parsing (no cookie-parser dependency).
+    let sessionUser = undefined; // undefined = not yet looked up; null = no valid session
+    const getUser = () => {
+      if (sessionUser === undefined) {
+        try {
+          const raw   = req.headers.cookie || "";
+          const match = raw.match(/(?:^|;\s*)scoop_session=([^;]+)/);
+          const token = match ? match[1] : null;
+          sessionUser = token ? getUserBySession(token) : null;
+        } catch { sessionUser = null; }
+      }
+      return sessionUser;
+    };
 
     for (const ev of incoming) {
       const type = String(ev?.event || "").trim();
@@ -79,6 +108,26 @@ router.post("/", (req, res) => {
         metadata: JSON.parse(safeMetadata),
       });
       accepted++;
+
+      // ── Per-user signal recording for personalized ranking ──────────
+      if (USER_SIGNAL_EVENTS.has(type) && ev.articleId && ev.category) {
+        try {
+          const user = getUser();
+          if (user) {
+            const dwellMs = type === "dwell_time_30s" ? 30000
+                          : type === "dwell_time_60s" ? 60000
+                          : (Number(metadata.dwellMs) || 0);
+            const saved   = type === "save_article" ? 1 : 0;
+            recordUserView(
+              user.id,
+              String(ev.articleId).slice(0, 64),
+              String(ev.category).slice(0, 40),
+              dwellMs,
+              saved,
+            );
+          }
+        } catch { /* per-user recording is best-effort; never block */ }
+      }
     }
     res.json({ ok: true, accepted });
   } catch (err) {

@@ -224,6 +224,59 @@ function initializeSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
 
+    -- ─── Personalized feed — per-user reading signals ─────────────────
+    -- One row per (user, article) upserted on first view; dwell_ms and
+    -- saved are bumped as the user reads longer or saves the article.
+    -- Used to compute category weights for feed re-ranking.
+    CREATE TABLE IF NOT EXISTS user_article_views (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     TEXT NOT NULL REFERENCES users(id),
+      article_id  TEXT NOT NULL,
+      category    TEXT NOT NULL,
+      dwell_ms    INTEGER DEFAULT 0,
+      saved       INTEGER DEFAULT 0,
+      created_at  INTEGER NOT NULL,
+      UNIQUE(user_id, article_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_uav_user    ON user_article_views(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_uav_category ON user_article_views(user_id, category);
+
+    -- ─── Short-form video pipeline ────────────────────────────────────
+    -- video_jobs: one row per article × render request. Status lifecycle:
+    --   queued → rendering → ready → review_approved | review_rejected
+    -- Auto-publish fires only once status transitions to review_approved.
+    CREATE TABLE IF NOT EXISTS video_jobs (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id      TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'queued',  -- queued|rendering|ready|review_approved|review_rejected|published|failed
+      output_path     TEXT,          -- absolute path to the MP4 on disk
+      has_audio       INTEGER DEFAULT 0,
+      duration_secs   INTEGER DEFAULT 0,
+      platforms_posted TEXT DEFAULT '[]', -- JSON array of platforms already published to
+      error           TEXT,
+      thumbnail_b64   TEXT,          -- base64 PNG preview of slide 1 (from previewSlide())
+      created_at      INTEGER NOT NULL,
+      rendered_at     INTEGER,
+      approved_at     INTEGER,
+      published_at    INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_video_jobs_article  ON video_jobs(article_id);
+    CREATE INDEX IF NOT EXISTS idx_video_jobs_status   ON video_jobs(status, created_at DESC);
+
+    -- Per-platform performance metrics fetched post-publish.
+    CREATE TABLE IF NOT EXISTS video_metrics (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES video_jobs(id),
+      platform    TEXT NOT NULL,
+      platform_id TEXT,              -- native video ID on the platform
+      views       INTEGER DEFAULT 0,
+      likes       INTEGER DEFAULT 0,
+      shares      INTEGER DEFAULT 0,
+      click_throughs INTEGER DEFAULT 0,
+      fetched_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_video_metrics_job ON video_metrics(job_id);
+
     -- ─── Live Events (the "Live" tab) ──────────────────────────────────
     -- One row per tracked global event. The full dossier (brief points +
     -- metrics) is stored as JSON blobs so the shape can evolve without
@@ -983,6 +1036,151 @@ export function getSavedArticlesForUser(userId, limit = 50) {
     ORDER BY s.saved_at DESC
     LIMIT ?
   `).all(userId, limit);
+}
+
+// ─── Personalized feed helpers ──────────────────────────────────────────────
+
+// Record or update a per-user article view. Called from the track endpoint
+// when a session cookie is present. On conflict (same user + article) we keep
+// the longest dwell_ms seen and OR-merge the saved flag.
+export function recordUserView(userId, articleId, category, dwellMs = 0, saved = false) {
+  getDb().prepare(`
+    INSERT INTO user_article_views (user_id, article_id, category, dwell_ms, saved, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, article_id) DO UPDATE SET
+      dwell_ms   = MAX(dwell_ms, excluded.dwell_ms),
+      saved      = saved OR excluded.saved
+  `).run(userId, articleId, category, dwellMs | 0, saved ? 1 : 0, Date.now());
+}
+
+// Compute per-category interest scores for a user based on the last 30 days
+// of reading history. Score formula (per article):
+//   view = 1, dwell ≥ 30s = +1, dwell ≥ 90s = +1, saved = +3
+// Returns a plain object { category: rawScore }. Empty object when the user
+// has no history (new users fall back to the default editorial ranking).
+export function getUserCategoryWeights(userId) {
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const rows = getDb().prepare(`
+    SELECT
+      category,
+      COUNT(*)                                                      AS views,
+      SUM(CASE WHEN dwell_ms >= 30000 THEN 1 ELSE 0 END)           AS long_reads,
+      SUM(CASE WHEN dwell_ms >= 90000 THEN 1 ELSE 0 END)           AS deep_reads,
+      SUM(saved)                                                    AS saves
+    FROM user_article_views
+    WHERE user_id = ? AND created_at > ?
+    GROUP BY category
+  `).all(userId, cutoff);
+
+  const weights = {};
+  for (const r of rows) {
+    weights[r.category] = (r.views || 0) + (r.long_reads || 0)
+                        + (r.deep_reads || 0) * 2 + (r.saves || 0) * 3;
+  }
+  return weights;
+}
+
+// ─── Video job queue helpers ─────────────────────────────────────────────────
+
+export function enqueueVideoJob(articleId) {
+  // Idempotent — don't re-enqueue if already queued/rendering.
+  const existing = getDb().prepare(`
+    SELECT id FROM video_jobs
+    WHERE article_id = ? AND status IN ('queued','rendering','ready','review_approved')
+    LIMIT 1
+  `).get(articleId);
+  if (existing) return existing.id;
+
+  const r = getDb().prepare(`
+    INSERT INTO video_jobs (article_id, status, created_at)
+    VALUES (?, 'queued', ?)
+  `).run(articleId, Date.now());
+  return r.lastInsertRowid;
+}
+
+export function setVideoJobRendering(jobId) {
+  getDb().prepare(`UPDATE video_jobs SET status = 'rendering' WHERE id = ?`).run(jobId);
+}
+
+export function setVideoJobReady(jobId, { outputPath, hasAudio, durationSecs, thumbnailB64 = null } = {}) {
+  getDb().prepare(`
+    UPDATE video_jobs SET
+      status = 'ready',
+      output_path = ?,
+      has_audio = ?,
+      duration_secs = ?,
+      thumbnail_b64 = ?,
+      rendered_at = ?
+    WHERE id = ?
+  `).run(outputPath, hasAudio ? 1 : 0, durationSecs || 0, thumbnailB64, Date.now(), jobId);
+}
+
+export function setVideoJobFailed(jobId, error) {
+  getDb().prepare(`
+    UPDATE video_jobs SET status = 'failed', error = ?, rendered_at = ? WHERE id = ?
+  `).run(String(error).slice(0, 500), Date.now(), jobId);
+}
+
+export function approveVideoJob(jobId) {
+  getDb().prepare(`
+    UPDATE video_jobs SET status = 'review_approved', approved_at = ? WHERE id = ?
+  `).run(Date.now(), jobId);
+}
+
+export function rejectVideoJob(jobId) {
+  getDb().prepare(`UPDATE video_jobs SET status = 'review_rejected' WHERE id = ?`).run(jobId);
+}
+
+export function markVideoJobPublished(jobId, platforms = []) {
+  getDb().prepare(`
+    UPDATE video_jobs SET status = 'published', platforms_posted = ?, published_at = ? WHERE id = ?
+  `).run(JSON.stringify(platforms), Date.now(), jobId);
+}
+
+export function listVideoJobs({ status = null, limit = 50, offset = 0 } = {}) {
+  if (status) {
+    return getDb().prepare(`
+      SELECT j.*, a.title AS article_title, a.category, a.source_name, a.image_url
+      FROM video_jobs j LEFT JOIN articles a ON a.id = j.article_id
+      WHERE j.status = ?
+      ORDER BY j.created_at DESC LIMIT ? OFFSET ?
+    `).all(status, limit, offset);
+  }
+  return getDb().prepare(`
+    SELECT j.*, a.title AS article_title, a.category, a.source_name, a.image_url
+    FROM video_jobs j LEFT JOIN articles a ON a.id = j.article_id
+    ORDER BY j.created_at DESC LIMIT ? OFFSET ?
+  `).all(limit, offset);
+}
+
+export function getVideoJobById(id) {
+  return getDb().prepare(`SELECT * FROM video_jobs WHERE id = ?`).get(id);
+}
+
+export function getVideoJobsReadyToPublish() {
+  return getDb().prepare(`
+    SELECT j.*, a.title AS article_title, a.category, a.source_name, a.image_url, a.description
+    FROM video_jobs j LEFT JOIN articles a ON a.id = j.article_id
+    WHERE j.status = 'review_approved' AND j.output_path IS NOT NULL
+    ORDER BY j.approved_at ASC
+  `).all();
+}
+
+// Articles that haven't been rendered yet and are fresh+credible enough to
+// warrant a video. Called by the nightly cron batch.
+export function findArticlesForVideoQueue({ minCredibility = 7, withinMs = 24 * 60 * 60 * 1000, limit = 5 } = {}) {
+  const cutoff = Date.now() - withinMs;
+  return getDb().prepare(`
+    SELECT a.id, a.title, a.description, a.content, a.category, a.source_name,
+           a.image_url, a.published_at, a.credibility
+    FROM articles a
+    LEFT JOIN video_jobs j ON j.article_id = a.id
+    WHERE j.article_id IS NULL
+      AND a.published_at > ?
+      AND a.credibility >= ?
+    ORDER BY a.credibility DESC, a.published_at DESC
+    LIMIT ?
+  `).all(cutoff, minCredibility, limit);
 }
 
 // Pick fresh, high-credibility articles that haven't been pushed yet, ordered

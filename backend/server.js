@@ -26,6 +26,7 @@ import cardsRouter       from "./src/routes/cards.js";
 import pushRouter        from "./src/routes/push.js";
 import authRouter        from "./src/routes/auth.js";
 import tipsRouter        from "./src/routes/tips.js";
+import videoGenRouter    from "./src/routes/videos-gen.js";
 import { detectCountry } from "./src/services/geolocation.js";
 import { skimlinksPublisherId, amazonInfoForCountry } from "./src/config/affiliates.js";
 import { isStripeConfigured } from "./src/routes/tips.js";
@@ -141,6 +142,7 @@ app.use("/api/push",        pushRouter);       // web push: VAPID public key, su
 app.use("/api/auth",        authRouter);       // magic-link auth: /request, /verify, /me, /logout, /saves
 app.use("/api/tips",        tipsRouter);       // Stripe tip jar: /create-session, /webhook, /stats
 app.use("/scoop-ops",       socialRouter);     // /scoop-ops/social-queue — preview auto-generated social captions (renamed from /admin to bypass host WAF)
+app.use("/scoop-ops/videos-gen", videoGenRouter); // video generation queue: /queue, /run, /approve/:id, /reject/:id
 
 // Health
 app.get("/api/health", (req, res) => {
