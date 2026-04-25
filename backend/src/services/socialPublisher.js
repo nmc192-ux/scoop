@@ -20,6 +20,8 @@ import { ensureCard } from "./cardRenderer.js";
 import { isBlueskyConfigured, postToBluesky } from "./blueskyClient.js";
 import { isThreadsConfigured, postToThreads } from "./threadsClient.js";
 import { isFacebookConfigured, postToFacebook } from "./facebookClient.js";
+import { isLinkedinConfigured, postToLinkedin } from "./linkedinClient.js";
+import { isPinterestConfigured, postToPinterest } from "./pinterestClient.js";
 import { logger } from "./logger.js";
 
 const SITE = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com").replace(/\/+$/, "");
@@ -70,6 +72,48 @@ const ADAPTERS = {
       const imageUrl = `${SITE}/api/cards/og/${encodeURIComponent(article.id)}.png`;
       const articleUrl = `${SITE}/article/${encodeURIComponent(article.id)}?utm_source=social_facebook&utm_medium=social&utm_campaign=scoop_auto`;
       const out = await postToFacebook({ text: composed.caption, imageUrl, link: articleUrl });
+      return { url: out.url, platformPostId: out.id };
+    },
+  },
+
+  linkedin: {
+    name: "linkedin",
+    // LinkedIn algorithm favours analytical, longer posts; 2-3/day max.
+    // B2B/professional audience — only post high-credibility stories.
+    minIntervalMs: 4 * 60 * 60 * 1000, // 4 hours between posts
+    composeKey: "linkedin",
+    enabled: isLinkedinConfigured,
+    async post(article, composed) {
+      const articleUrl = `${SITE}/article/${encodeURIComponent(article.id)}?utm_source=social_linkedin&utm_medium=social&utm_campaign=scoop_auto`;
+      // LinkedIn renders the OG thumbnail automatically via the link-card unfurl
+      // (no binary upload needed — the /article/:id SSR page has OG tags).
+      const out = await postToLinkedin({
+        text: composed.caption,
+        articleUrl,
+        articleTitle: article.title,
+        articleDescription: article.description || "",
+      });
+      return { url: out.url, platformPostId: out.id };
+    },
+  },
+
+  pinterest: {
+    name: "pinterest",
+    // Pinterest rewards 4-6 pins/day with good spread. High-credibility,
+    // image-rich articles get the best organic reach. Pins persist for years
+    // so this is one of the few social actions with durable SEO value.
+    minIntervalMs: 4 * 60 * 60 * 1000, // 4 hours between pins
+    composeKey: "pinterest",
+    enabled: isPinterestConfigured,
+    async post(article, composed) {
+      const imageUrl = `${SITE}/api/cards/og/${encodeURIComponent(article.id)}.png`;
+      const articleUrl = `${SITE}/article/${encodeURIComponent(article.id)}?utm_source=social_pinterest&utm_medium=social&utm_campaign=scoop_auto`;
+      const out = await postToPinterest({
+        imageUrl,
+        description: composed.caption,
+        link: articleUrl,
+        title: article.title,
+      });
       return { url: out.url, platformPostId: out.id };
     },
   },

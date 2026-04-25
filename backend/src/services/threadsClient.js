@@ -25,15 +25,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = path.resolve(__dirname, "../..");
 const TOKEN_PATH = path.join(BACKEND_ROOT, "data", "threads-token.json");
 
-const API_BASE = process.env.THREADS_API_BASE || "https://graph.threads.net/v1.0";
-const ENV_TOKEN = process.env.THREADS_ACCESS_TOKEN || "";
-const USER_ID   = process.env.THREADS_USER_ID || "";
+// Lazy getters — read at call time so backend/.env loaded by server.js body is visible.
+const getApiBase  = () => process.env.THREADS_API_BASE || "https://graph.threads.net/v1.0";
+const getEnvToken = () => process.env.THREADS_ACCESS_TOKEN || "";
+const getUserId   = () => process.env.THREADS_USER_ID || "";
 
 // In-memory cache populated from disk on first call.
 let cached = null; // { accessToken, expiresAt, userId }
 
 export function isThreadsConfigured() {
-  return Boolean((ENV_TOKEN || readDiskToken()) && USER_ID);
+  return Boolean((getEnvToken() || readDiskToken()) && getUserId());
 }
 
 function readDiskToken() {
@@ -60,10 +61,11 @@ function loadToken() {
   if (cached) return cached;
   const onDisk = readDiskToken();
   if (onDisk) { cached = onDisk; return cached; }
-  if (ENV_TOKEN) {
+  const envTok = getEnvToken();
+  if (envTok) {
     // Bootstrap: take the env token. We don't know the exact expiry so we
     // mark it as 50d out (Meta long-lived = 60d) and rely on refresh.
-    cached = { accessToken: ENV_TOKEN, expiresAt: Date.now() + 50 * 24 * 60 * 60 * 1000, userId: USER_ID };
+    cached = { accessToken: envTok, expiresAt: Date.now() + 50 * 24 * 60 * 60 * 1000, userId: getUserId() };
     writeDiskToken(cached);
     return cached;
   }
@@ -79,7 +81,7 @@ async function refreshIfNeeded() {
   if (remaining > 7 * 24 * 60 * 60 * 1000) return t;
 
   try {
-    const url = `${API_BASE.replace(/\/v1\.0$/, "")}/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(t.accessToken)}`;
+    const url = `${getApiBase().replace(/\/v1\.0$/, "")}/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(t.accessToken)}`;
     const res = await fetch(url);
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json.access_token) {
@@ -104,7 +106,7 @@ async function call(pathPart, { method = "GET", params = {}, body } = {}) {
   const t = await refreshIfNeeded();
   if (!t) throw new Error("threads not configured");
   const qs = new URLSearchParams({ ...params, access_token: t.accessToken });
-  const url = `${API_BASE}${pathPart}?${qs.toString()}`;
+  const url = `${getApiBase()}${pathPart}?${qs.toString()}`;
   const init = { method, headers: {} };
   if (body !== undefined) {
     init.headers["Content-Type"] = "application/json";

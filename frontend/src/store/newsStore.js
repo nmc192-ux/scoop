@@ -111,6 +111,10 @@ export const useNewsStore = create(
       completeOnboarding: () => set({ onboardingComplete: true }),
       resetOnboarding:   () => set({ onboardingComplete: false }),
 
+      // ─── Auth modal (not persisted) ───────────────────────────────
+      authOpen: false,
+      setAuthOpen: (v) => set({ authOpen: !!v }),
+
       // Reader preferences
       readerPrefs: { fontIdx: 1, sepia: false },
       setReaderPrefs: (patch) => set({ readerPrefs: { ...get().readerPrefs, ...patch } }),

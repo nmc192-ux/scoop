@@ -24,8 +24,11 @@ import affiliateRouter   from "./src/routes/affiliate.js";
 import socialRouter      from "./src/routes/social.js";
 import cardsRouter       from "./src/routes/cards.js";
 import pushRouter        from "./src/routes/push.js";
+import authRouter        from "./src/routes/auth.js";
+import tipsRouter        from "./src/routes/tips.js";
 import { detectCountry } from "./src/services/geolocation.js";
 import { skimlinksPublisherId, amazonInfoForCountry } from "./src/config/affiliates.js";
+import { isStripeConfigured } from "./src/routes/tips.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
 import { getDb } from "./src/models/database.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "./src/config/sources.js";
@@ -95,6 +98,8 @@ app.use(cors({
   methods: ["GET","POST"],
   allowedHeaders: ["Content-Type"],
 }));
+// Stripe webhook needs raw body for signature verification — must be before express.json().
+app.use("/api/tips/webhook", express.raw({ type: "application/json" }));
 app.use(express.json({ limit: "1mb" }));
 
 const limiter = rateLimit({
@@ -133,7 +138,9 @@ app.use("/api/track",       trackRouter);      // frontend event beacons (page_v
 app.use("/api/affiliate",   affiliateRouter);  // geo-aware affiliate program picker + paywall CTA resolver
 app.use("/api/cards",       cardsRouter);      // branded OG/IG/Story PNG cards — disk-cached, 1-week public cache
 app.use("/api/push",        pushRouter);       // web push: VAPID public key, subscribe/unsubscribe, admin broadcast
-app.use("/admin",           socialRouter);     // /admin/social-queue — preview auto-generated social captions
+app.use("/api/auth",        authRouter);       // magic-link auth: /request, /verify, /me, /logout, /saves
+app.use("/api/tips",        tipsRouter);       // Stripe tip jar: /create-session, /webhook, /stats
+app.use("/scoop-ops",       socialRouter);     // /scoop-ops/social-queue — preview auto-generated social captions (renamed from /admin to bypass host WAF)
 
 // Health
 app.get("/api/health", (req, res) => {
@@ -179,6 +186,10 @@ app.get("/api/public-config", (req, res) => {
         sidebar: process.env.ADSENSE_SLOT_SIDEBAR?.trim() || process.env.VITE_ADSENSE_SLOT_SIDEBAR?.trim() || "",
         inline: process.env.ADSENSE_SLOT_INLINE?.trim() || process.env.VITE_ADSENSE_SLOT_INLINE?.trim() || "",
       },
+    },
+    stripe: {
+      configured: isStripeConfigured(),
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY?.trim() || "",
     },
   });
 });

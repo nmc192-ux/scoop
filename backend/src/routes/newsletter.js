@@ -13,6 +13,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { getDb } from "../models/database.js";
+import { getReferralCount } from "../models/database.js";
 import { logger } from "../services/logger.js";
 import { getTransport, sendMail } from "../services/mailer.js";
 
@@ -29,22 +30,26 @@ function isEmail(s) {
 
 // ─── Subscribe ──────────────────────────────────────────────────────────────
 router.post("/subscribe", async (req, res) => {
-  const { email, countryCode, language, topics } = req.body || {};
+  const { email, countryCode, language, topics, referredBy } = req.body || {};
   if (!isEmail(email)) return res.status(400).json({ success: false, error: "Invalid email" });
 
   const db = getDb();
   const now = Date.now();
   const token = randomToken();
   const topicsJson = JSON.stringify(Array.isArray(topics) ? topics.slice(0, 20) : []);
+  // Validate referredBy is a plausible token string (hex, 48 chars) to prevent injection.
+  const refToken = (typeof referredBy === "string" && /^[0-9a-f]{48}$/.test(referredBy))
+    ? referredBy : null;
 
   try {
     db.prepare(`
-      INSERT INTO subscribers (email, country_code, language, topics, token, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO subscribers (email, country_code, language, topics, token, referred_by_token, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(email) DO UPDATE SET
         country_code = excluded.country_code,
         language     = excluded.language,
         topics       = excluded.topics,
+        referred_by_token = COALESCE(referred_by_token, excluded.referred_by_token),
         unsubscribed_at = NULL
     `).run(
       email.toLowerCase(),
@@ -52,6 +57,7 @@ router.post("/subscribe", async (req, res) => {
       language   || "en",
       topicsJson,
       token,
+      refToken,
       now
     );
 
@@ -77,7 +83,7 @@ router.post("/subscribe", async (req, res) => {
       logger.info(`newsletter: no SMTP configured, storing subscriber ${email} without sending welcome`);
     }
 
-    res.json({ success: true });
+    res.json({ success: true, token });
   } catch (err) {
     logger.error(`subscribe failed: ${err.message}`);
     res.status(500).json({ success: false, error: "Internal error" });
@@ -112,6 +118,18 @@ router.get("/unsubscribe", (req, res) => {
          <a href="${SITE_URL}">${new URL(SITE_URL).hostname}</a>.</p>
     </body>
   `);
+});
+
+// ─── Referral stats (per subscriber token) ──────────────────────────────────
+// Used by the frontend "invite friends" card to show live referral count.
+router.get("/referral-stats", (req, res) => {
+  const token = String(req.query.token || "").trim();
+  if (!token || !/^[0-9a-f]{48}$/.test(token)) {
+    return res.status(400).json({ success: false, error: "Invalid token" });
+  }
+  const referrals = getReferralCount(token);
+  const referralUrl = `${SITE_URL}/?ref=${token}`;
+  res.json({ success: true, referrals, referralUrl });
 });
 
 // ─── Preview (admin) ────────────────────────────────────────────────────────

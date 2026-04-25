@@ -28,14 +28,16 @@ import { trackPageView, attachEngagementObservers } from "./lib/track";
 import ScoopMascot from "./components/mascot/KhabriMascot";
 import { AdSenseBanner, AdSenseSidebar, AdSenseUnit } from "./components/ads/AdSense";
 import AffiliateWidget from "./components/ads/AffiliateWidget";
+import TipJar from "./components/tips/TipJar";
 import SkimlinksLoader from "./components/ads/SkimlinksLoader";
 import ReaderModal from "./components/reader/ReaderModal";
 import OnboardingModal from "./components/onboarding/OnboardingModal";
 import NewsletterCaptureModal from "./components/newsletter/NewsletterCaptureModal";
 import PushOptInBanner from "./components/push/PushOptInBanner";
+import AuthModal from "./components/auth/AuthModal";
 
 export default function App() {
-  const { activeTopics, searchQuery, lastRefreshed, language, savedArticles } = useNewsStore();
+  const { activeTopics, searchQuery, lastRefreshed, language, savedArticles, authOpen, setAuthOpen } = useNewsStore();
   const showingSaved = activeTopics.includes("saved");
   const { data: fetchedArticles = [], isLoading: fetchedLoading, error, refetch } = useNews();
   const articles = showingSaved ? savedArticles : fetchedArticles;
@@ -58,10 +60,34 @@ export default function App() {
   }, []);
 
   // Analytics: fire a page_view on load + wire up scroll/dwell observers.
-  // Cheap and bounded — all deduped server-side via the event allowlist.
+  // Also persist ?ref= token so newsletter referral attribution survives SPA navigation.
+  // Handle ?auth=verified redirect from magic-link flow.
+  const [authToast, setAuthToast]             = useState(false);
+  const [paymentToast, setPaymentToast]       = useState(false);
+  const [newsletterToast, setNewsletterToast] = useState(false);
   useEffect(() => {
     trackPageView({ topics: activeTopics, language });
     attachEngagementObservers();
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get("ref");
+      if (ref && /^[0-9a-f]{48}$/.test(ref)) localStorage.setItem("scoop_ref_token", ref);
+      if (params.get("auth") === "verified") {
+        setAuthToast(true);
+        window.history.replaceState({}, "", window.location.pathname);
+        setTimeout(() => setAuthToast(false), 4000);
+      }
+      if (params.get("payment") === "success") {
+        setPaymentToast(true);
+        window.history.replaceState({}, "", window.location.pathname);
+        setTimeout(() => setPaymentToast(false), 5000);
+      }
+      if (params.get("newsletter") === "confirmed") {
+        setNewsletterToast(true);
+        window.history.replaceState({}, "", window.location.pathname);
+        setTimeout(() => setNewsletterToast(false), 5000);
+      }
+    } catch {}
     // Intentionally run once on mount; topic-change events are fired from TopicNav.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -206,6 +232,7 @@ export default function App() {
               format="auto"
             />
             <AffiliateWidget category="default" />
+            {publicConfig?.stripe?.configured && <TipJar />}
             <MarketStrip />
             <MostReadSidebar articles={articles} />
           </aside>
@@ -260,6 +287,8 @@ export default function App() {
             <a href="/contact" className="hover:text-[var(--color-text)] transition-colors">Contact</a>
             <span>·</span>
             <a href="/privacy" className="hover:text-[var(--color-text)] transition-colors">Privacy</a>
+            <span>·</span>
+            <a href="/sponsor" className="hover:text-[var(--color-text)] transition-colors">Advertise</a>
           </div>
         </div>
       </footer>
@@ -272,6 +301,55 @@ export default function App() {
       <OnboardingModal />
       <NewsletterCaptureModal />
       <PushOptInBanner topics={activeTopics} language={language} />
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+
+      {/* ── Auth verified toast ────────────────────────────────────── */}
+      <AnimatePresence>
+        {authToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: "-50%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50
+                       bg-green-600 text-white text-sm px-5 py-2.5 rounded-full shadow-2xl
+                       flex items-center gap-2"
+          >
+            ✓ Signed in — your saves sync across devices now
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Payment success toast ───────────────────────────────────── */}
+      <AnimatePresence>
+        {paymentToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: "-50%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50
+                       bg-red-500 text-white text-sm px-5 py-2.5 rounded-full shadow-2xl
+                       flex items-center gap-2"
+          >
+            ❤️ Thank you for supporting Scoop!
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Newsletter confirmed toast ──────────────────────────────── */}
+      <AnimatePresence>
+        {newsletterToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: "-50%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50
+                       bg-brand-blue text-white text-sm px-5 py-2.5 rounded-full shadow-2xl
+                       flex items-center gap-2"
+          >
+            📬 You're subscribed! First digest arrives at 7am.
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Refresh toast ──────────────────────────────────────────── */}
       <AnimatePresence>

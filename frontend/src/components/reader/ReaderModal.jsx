@@ -11,8 +11,10 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useReaderStore, useReaderArticle, useTranslatedReader } from "../../hooks/useReader";
 import { useNewsStore } from "../../store/newsStore";
+import { usePublicConfig } from "../../hooks/useNews";
 import { isRtl, langFont, nativeName, LANG_BY_CODE } from "../../lib/languages";
 import { track, trackShare, trackOutboundClick, trackSave } from "../../lib/track";
+import TipJar from "../tips/TipJar";
 
 // Fetches 4 related stories in the same category, used by the recirculation
 // block at the bottom of the reader. Cached per category to avoid re-fetching
@@ -35,6 +37,7 @@ const FONT_SIZES = [
 export default function ReaderModal() {
   const { article, open, closeReader, openReader } = useReaderStore();
   const { saveArticle, savedArticles, language, autoLanguage } = useNewsStore();
+  const { data: publicConfig } = usePublicConfig();
   const url = open ? article?.url : null;
   const { data, isLoading, isError, error } = useReaderArticle(url);
 
@@ -299,6 +302,13 @@ export default function ReaderModal() {
                     ))}
                   </div>
                 </section>
+              )}
+
+              {/* Support Scoop tip CTA — only renders when Stripe is configured */}
+              {publicConfig?.stripe?.configured && (
+                <div className="mt-8 pt-6 border-t border-[var(--color-border)]">
+                  <TipJar compact />
+                </div>
               )}
             </div>
           </motion.div>

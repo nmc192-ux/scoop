@@ -40,14 +40,17 @@ const BACKEND_ROOT = path.resolve(__dirname, "../..");
 const TOKEN_PATH = path.join(BACKEND_ROOT, "data", "facebook-token.json");
 
 const API_BASE = "https://graph.facebook.com/v19.0";
-const ENV_PAGE_TOKEN = process.env.FACEBOOK_PAGE_TOKEN || "";
-const ENV_PAGE_ID    = process.env.FACEBOOK_PAGE_ID    || "";
+
+// Read env vars lazily so they work whether loaded by backend/.env (via
+// start.js pre-loader or server.js body) or set at the process level.
+const getEnvPageToken = () => process.env.FACEBOOK_PAGE_TOKEN || "";
+const getEnvPageId    = () => process.env.FACEBOOK_PAGE_ID    || "";
 
 // In-memory cache. Shape: { pageToken, pageId }
 let cached = null;
 
 export function isFacebookConfigured() {
-  return Boolean((ENV_PAGE_TOKEN || _readDiskToken()?.pageToken) && ENV_PAGE_ID);
+  return Boolean((getEnvPageToken() || _readDiskToken()?.pageToken) && getEnvPageId());
 }
 
 function _readDiskToken() {
@@ -75,8 +78,10 @@ function _loadToken() {
   if (cached) return cached;
   const onDisk = _readDiskToken();
   if (onDisk) { cached = onDisk; return cached; }
-  if (ENV_PAGE_TOKEN && ENV_PAGE_ID) {
-    cached = { pageToken: ENV_PAGE_TOKEN, pageId: ENV_PAGE_ID };
+  const tok = getEnvPageToken();
+  const pid = getEnvPageId();
+  if (tok && pid) {
+    cached = { pageToken: tok, pageId: pid };
     _writeDiskToken(cached);
     return cached;
   }

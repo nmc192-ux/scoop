@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sun, Moon, Search, X, RefreshCw,
-  Activity, Grid3x3, List
+  Activity, Grid3x3, List, UserCircle
 } from "lucide-react";
 import { useNewsStore } from "../../store/newsStore";
 import { useHealth, useRefresh } from "../../hooks/useNews";
+import { useAuth } from "../../hooks/useAuth";
 import { ScoopLogo } from "../mascot/KhabriMascot";
 import CountryPicker from "./CountryPicker";
 import LanguagePicker from "./LanguagePicker";
@@ -17,10 +18,11 @@ export default function Header() {
     darkMode, toggleDarkMode,
     searchQuery, setSearchQuery,
     viewMode, setViewMode,
-    language,
+    language, setAuthOpen,
   } = useNewsStore();
   const { data: health } = useHealth();
   const refresh = useRefresh();
+  const { isLoggedIn } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -181,6 +183,17 @@ export default function Header() {
 
             {/* Country picker */}
             <CountryPicker />
+
+            {/* Sign in / profile */}
+            <HeaderBtn
+              onClick={() => setAuthOpen(true)}
+              title={isLoggedIn ? "Your profile" : "Sign in"}
+            >
+              <UserCircle
+                size={16}
+                className={isLoggedIn ? "text-brand-blue" : undefined}
+              />
+            </HeaderBtn>
 
             {/* Dark mode */}
             <HeaderBtn onClick={toggleDarkMode} title="Toggle dark mode">

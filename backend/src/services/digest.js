@@ -9,6 +9,7 @@
  * there are no verified, non-unsubscribed subscribers.
  */
 import { getDb } from "../models/database.js";
+import { getReferralCount } from "../models/database.js";
 import { getTransport, sendMail } from "./mailer.js";
 import { logger } from "./logger.js";
 
@@ -38,7 +39,7 @@ function pickTopArticles(categories) {
   `).all(since, PER_DIGEST);
 }
 
-function renderDigestHtml(articles, unsubUrl) {
+function renderDigestHtml(articles, unsubUrl, { referralUrl = null, referralCount = 0 } = {}) {
   const items = articles.map((a) => `
     <tr><td style="padding:12px 0;border-bottom:1px solid #eee">
       <a href="${a.url}" style="color:#111;text-decoration:none">
@@ -49,11 +50,24 @@ function renderDigestHtml(articles, unsubUrl) {
     </td></tr>
   `).join("");
 
+  const referralBlock = referralUrl ? `
+    <div style="margin-top:24px;padding:16px;background:#f0f7ff;border-radius:10px;border:1px solid #cce0ff">
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px">📬 Invite friends to Scoop</div>
+      ${referralCount > 0
+        ? `<div style="font-size:13px;color:#444;margin-bottom:8px">You've referred <strong>${referralCount}</strong> reader${referralCount === 1 ? "" : "s"} so far — thank you!</div>`
+        : `<div style="font-size:13px;color:#444;margin-bottom:8px">Know someone who'd love Scoop? Share your personal invite link.</div>`}
+      <div style="font-size:12px;background:#fff;border:1px solid #cce0ff;border-radius:6px;padding:8px 10px;word-break:break-all;color:#007AFF">
+        <a href="${referralUrl}" style="color:#007AFF;text-decoration:none">${referralUrl}</a>
+      </div>
+    </div>
+  ` : "";
+
   return `
     <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto;padding:24px;color:#111">
       <div style="font-size:22px;font-weight:800;margin-bottom:4px">Scoop Daily</div>
       <div style="font-size:12px;color:#666;margin-bottom:18px">Top stories from the last 24 hours</div>
       <table width="100%" cellpadding="0" cellspacing="0">${items}</table>
+      ${referralBlock}
       <div style="margin-top:28px;font-size:12px;color:#888">
         <a href="${SITE_URL}" style="color:#007AFF">Open Scoop</a> ·
         <a href="${unsubUrl}" style="color:#888">Unsubscribe</a>
@@ -92,12 +106,15 @@ export async function sendDailyDigest() {
     if (!articles.length) continue;
 
     const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.token}`;
+    const referralUrl = `${SITE_URL}/?ref=${sub.token}`;
+    const referralCount = getReferralCount(sub.token);
     try {
       await sendMail({
         to: sub.email,
         subject: `Scoop Daily — ${articles[0].title.slice(0, 60)}`,
-        html: renderDigestHtml(articles, unsubUrl),
-        text: articles.map((a) => `• ${a.title}\n  ${a.url}`).join("\n\n"),
+        html: renderDigestHtml(articles, unsubUrl, { referralUrl, referralCount }),
+        text: articles.map((a) => `• ${a.title}\n  ${a.url}`).join("\n\n") +
+          `\n\n──\nInvite friends: ${referralUrl}`,
       });
       db.prepare(`UPDATE subscribers SET last_sent_at = ? WHERE id = ?`).run(Date.now(), sub.id);
       sent++;

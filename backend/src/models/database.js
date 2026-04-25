@@ -174,6 +174,56 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_social_recency ON social_posts(posted_at);
     CREATE INDEX IF NOT EXISTS idx_social_platform ON social_posts(platform, posted_at);
 
+    -- ─── Tips (Stripe donations) ──────────────────────────────────────
+    -- One row per completed Stripe Checkout payment. Populated by the
+    -- /api/tips/webhook handler on checkout.session.completed events.
+    CREATE TABLE IF NOT EXISTS tips (
+      id              TEXT PRIMARY KEY,   -- Stripe checkout session id
+      amount_cents    INTEGER NOT NULL,
+      currency        TEXT NOT NULL DEFAULT 'usd',
+      email           TEXT,               -- Stripe provides this on success
+      message         TEXT,               -- optional note from donor (future)
+      status          TEXT NOT NULL DEFAULT 'pending',  -- pending | completed | failed
+      stripe_pi       TEXT,               -- payment_intent id
+      created_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tips_created ON tips(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_tips_status  ON tips(status);
+
+    -- ─── Magic-link Auth ─────────────────────────────────────────────
+    -- users: one row per verified email. Stores cross-device preferences.
+    CREATE TABLE IF NOT EXISTS users (
+      id           TEXT PRIMARY KEY,          -- UUID v4
+      email        TEXT NOT NULL UNIQUE,
+      created_at   INTEGER NOT NULL,
+      last_login_at INTEGER,
+      preferred_topics  TEXT DEFAULT '[]',    -- JSON array of category strings
+      preferred_country TEXT,
+      language     TEXT DEFAULT 'en',
+      subscriber_token TEXT                   -- FK to subscribers.token (nullable)
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+    -- One-time magic-link tokens. Expire after 30 min; can only be used once.
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      token      TEXT PRIMARY KEY,
+      email      TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at    INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_tokens_email ON auth_tokens(email);
+
+    -- Per-device sessions. Set as httpOnly cookie; expire after 30 days.
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      id         TEXT PRIMARY KEY,            -- session token (random hex)
+      user_id    TEXT NOT NULL REFERENCES users(id),
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      last_seen  INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+
     -- ─── Live Events (the "Live" tab) ──────────────────────────────────
     -- One row per tracked global event. The full dossier (brief points +
     -- metrics) is stored as JSON blobs so the shape can evolve without
@@ -203,6 +253,18 @@ function initializeSchema(db) {
     }
   } catch (err) {
     logger.warn("Migration check failed", { error: err.message });
+  }
+
+  // Migration: add referred_by_token + referral_count to subscribers.
+  try {
+    const cols = db.prepare("PRAGMA table_info(subscribers)").all();
+    const names = new Set(cols.map((c) => c.name));
+    if (!names.has("referred_by_token")) {
+      db.exec("ALTER TABLE subscribers ADD COLUMN referred_by_token TEXT");
+      logger.info("Migrated subscribers table: +referred_by_token");
+    }
+  } catch (err) {
+    logger.warn("Migration check (subscribers) failed", { error: err.message });
   }
 
   // FTS5 full-text search virtual table + sync triggers
@@ -747,6 +809,180 @@ export function socialPostStats({ withinMs = 24 * 60 * 60 * 1000 } = {}) {
     GROUP BY platform, status
     ORDER BY platform
   `).all(cutoff);
+}
+
+// ─── Referral helpers ────────────────────────────────────────────────────────
+
+// How many verified, non-unsubscribed subscribers did token refer?
+export function getReferralCount(referrerToken) {
+  const row = getDb().prepare(`
+    SELECT COUNT(*) AS n FROM subscribers
+    WHERE referred_by_token = ?
+      AND verified_at IS NOT NULL
+      AND unsubscribed_at IS NULL
+  `).get(referrerToken);
+  return row?.n || 0;
+}
+
+// Top 20 referrers — used for leaderboard in weekly digest.
+export function getReferralLeaderboard(limit = 20) {
+  return getDb().prepare(`
+    SELECT referred_by_token AS token, COUNT(*) AS referrals
+    FROM subscribers
+    WHERE referred_by_token IS NOT NULL
+      AND verified_at IS NOT NULL
+      AND unsubscribed_at IS NULL
+    GROUP BY referred_by_token
+    ORDER BY referrals DESC
+    LIMIT ?
+  `).all(limit);
+}
+
+// ─── Tip helpers ────────────────────────────────────────────────────────────
+
+export function createTipRecord({ id, amountCents, currency = "usd", email = null }) {
+  getDb().prepare(`
+    INSERT OR IGNORE INTO tips (id, amount_cents, currency, email, status, created_at)
+    VALUES (?, ?, ?, ?, 'pending', ?)
+  `).run(id, amountCents, currency, email, Date.now());
+}
+
+export function completeTip(sessionId, { stripePaymentIntent, email } = {}) {
+  getDb().prepare(`
+    UPDATE tips SET status = 'completed', stripe_pi = ?, email = COALESCE(?, email)
+    WHERE id = ?
+  `).run(stripePaymentIntent || null, email || null, sessionId);
+}
+
+export function getTipStats() {
+  const db = getDb();
+  return db.prepare(`
+    SELECT
+      COUNT(*) AS total_count,
+      COALESCE(SUM(amount_cents), 0) AS total_cents,
+      COALESCE(SUM(CASE WHEN status = 'completed' THEN amount_cents ELSE 0 END), 0) AS completed_cents,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count
+    FROM tips
+  `).get();
+}
+
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
+
+export function createAuthToken(token, email, expiresAt) {
+  getDb().prepare(`
+    INSERT OR REPLACE INTO auth_tokens (token, email, created_at, expires_at)
+    VALUES (?, ?, ?, ?)
+  `).run(token, email.toLowerCase(), Date.now(), expiresAt);
+}
+
+export function consumeAuthToken(token) {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM auth_tokens WHERE token = ? AND used_at IS NULL`).get(token);
+  if (!row) return null;
+  if (row.expires_at < Date.now()) return null;
+  db.prepare(`UPDATE auth_tokens SET used_at = ? WHERE token = ?`).run(Date.now(), token);
+  return row; // { token, email, created_at, expires_at }
+}
+
+// Find or create a user by email. Returns the user row.
+export function upsertUser({ id, email, language, preferredTopics, preferredCountry, subscriberToken }) {
+  const db = getDb();
+  const existing = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email.toLowerCase());
+  if (existing) {
+    db.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).run(Date.now(), existing.id);
+    return existing;
+  }
+  db.prepare(`
+    INSERT INTO users (id, email, created_at, last_login_at, preferred_topics, preferred_country, language, subscriber_token)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    email.toLowerCase(),
+    Date.now(),
+    Date.now(),
+    JSON.stringify(Array.isArray(preferredTopics) ? preferredTopics : []),
+    preferredCountry || null,
+    language || "en",
+    subscriberToken || null,
+  );
+  return db.prepare(`SELECT * FROM users WHERE id = ?`).get(id);
+}
+
+export function getUserById(userId) {
+  return getDb().prepare(`SELECT * FROM users WHERE id = ?`).get(userId);
+}
+
+export function createUserSession(sessionId, userId, expiresAt) {
+  getDb().prepare(`
+    INSERT INTO user_sessions (id, user_id, created_at, expires_at, last_seen)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(sessionId, userId, Date.now(), expiresAt, Date.now());
+}
+
+export function getUserBySession(sessionId) {
+  const db = getDb();
+  const session = db.prepare(`
+    SELECT * FROM user_sessions WHERE id = ? AND expires_at > ?
+  `).get(sessionId, Date.now());
+  if (!session) return null;
+  db.prepare(`UPDATE user_sessions SET last_seen = ? WHERE id = ?`).run(Date.now(), sessionId);
+  return db.prepare(`SELECT * FROM users WHERE id = ?`).get(session.user_id);
+}
+
+export function deleteUserSession(sessionId) {
+  getDb().prepare(`DELETE FROM user_sessions WHERE id = ?`).run(sessionId);
+}
+
+export function updateUserPrefs(userId, { preferredTopics, language, preferredCountry }) {
+  const db = getDb();
+  if (preferredTopics !== undefined) {
+    db.prepare(`UPDATE users SET preferred_topics = ? WHERE id = ?`)
+      .run(JSON.stringify(Array.isArray(preferredTopics) ? preferredTopics : []), userId);
+  }
+  if (language !== undefined) {
+    db.prepare(`UPDATE users SET language = ? WHERE id = ?`).run(language, userId);
+  }
+  if (preferredCountry !== undefined) {
+    db.prepare(`UPDATE users SET preferred_country = ? WHERE id = ?`).run(preferredCountry || null, userId);
+  }
+}
+
+// ─── Saved articles (cross-device, server-side) ───────────────────────────
+// Separate from localStorage saves — synced to server when user is logged in.
+export function ensureSavedArticlesTable() {
+  getDb().exec(`
+    CREATE TABLE IF NOT EXISTS saved_articles (
+      user_id     TEXT NOT NULL,
+      article_id  TEXT NOT NULL,
+      saved_at    INTEGER NOT NULL,
+      PRIMARY KEY (user_id, article_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_user ON saved_articles(user_id, saved_at DESC);
+  `);
+}
+
+export function saveArticleForUser(userId, articleId) {
+  ensureSavedArticlesTable();
+  getDb().prepare(`
+    INSERT OR IGNORE INTO saved_articles (user_id, article_id, saved_at)
+    VALUES (?, ?, ?)
+  `).run(userId, articleId, Date.now());
+}
+
+export function unsaveArticleForUser(userId, articleId) {
+  ensureSavedArticlesTable();
+  getDb().prepare(`DELETE FROM saved_articles WHERE user_id = ? AND article_id = ?`).run(userId, articleId);
+}
+
+export function getSavedArticlesForUser(userId, limit = 50) {
+  ensureSavedArticlesTable();
+  return getDb().prepare(`
+    SELECT a.* FROM articles a
+    JOIN saved_articles s ON s.article_id = a.id
+    WHERE s.user_id = ?
+    ORDER BY s.saved_at DESC
+    LIMIT ?
+  `).all(userId, limit);
 }
 
 // Pick fresh, high-credibility articles that haven't been pushed yet, ordered

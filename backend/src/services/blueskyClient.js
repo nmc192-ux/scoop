@@ -9,18 +9,19 @@
 
 import { logger } from "./logger.js";
 
-const PDS = process.env.BLUESKY_PDS_URL || "https://bsky.social";
-const HANDLE = process.env.BLUESKY_HANDLE || "";
-const APP_PASSWORD = process.env.BLUESKY_APP_PASSWORD || "";
+// Lazy getters — read at call time so backend/.env loaded by server.js body is visible.
+const getPDS = () => process.env.BLUESKY_PDS_URL || "https://bsky.social";
+const getHandle = () => process.env.BLUESKY_HANDLE || "";
+const getAppPassword = () => process.env.BLUESKY_APP_PASSWORD || "";
 
 let session = null; // { did, accessJwt, refreshJwt, createdAt }
 
 export function isBlueskyConfigured() {
-  return Boolean(HANDLE && APP_PASSWORD);
+  return Boolean(getHandle() && getAppPassword());
 }
 
 async function call(path, { method = "POST", body, headers = {}, blob = null } = {}) {
-  const url = `${PDS}/xrpc/${path}`;
+  const url = `${getPDS()}/xrpc/${path}`;
   const init = { method, headers: { ...headers } };
   if (blob) {
     init.headers["Content-Type"] = blob.contentType || "application/octet-stream";
@@ -46,7 +47,7 @@ async function ensureSession({ force = false } = {}) {
   if (session && !force) return session;
   if (!isBlueskyConfigured()) throw new Error("bluesky not configured");
   const out = await call("com.atproto.server.createSession", {
-    body: { identifier: HANDLE, password: APP_PASSWORD },
+    body: { identifier: getHandle(), password: getAppPassword() },
   });
   session = {
     did: out.did,
@@ -118,6 +119,6 @@ export async function postToBluesky({ text, externalUrl, externalTitle, external
   // out: { uri: "at://did/app.bsky.feed.post/<rkey>", cid }
   // Convert to a public URL (https://bsky.app/profile/<handle>/post/<rkey>).
   const rkey = String(out.uri || "").split("/").pop();
-  const publicUrl = rkey ? `https://bsky.app/profile/${HANDLE}/post/${rkey}` : "";
+  const publicUrl = rkey ? `https://bsky.app/profile/${getHandle()}/post/${rkey}` : "";
   return { uri: out.uri, cid: out.cid, url: publicUrl };
 }
