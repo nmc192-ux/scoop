@@ -22,6 +22,9 @@ backend/data/vapid.json
 # Contains the access token + expiry; treat like a secret.
 backend/data/threads-token.json
 
+# Facebook permanent page token — persisted by facebookClient.js on first boot.
+backend/data/facebook-token.json
+
 # Logs
 *.log
 backend/logs/

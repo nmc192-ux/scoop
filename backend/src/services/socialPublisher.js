@@ -19,6 +19,7 @@ import { composeAllPlatforms } from "./socialComposer.js";
 import { ensureCard } from "./cardRenderer.js";
 import { isBlueskyConfigured, postToBluesky } from "./blueskyClient.js";
 import { isThreadsConfigured, postToThreads } from "./threadsClient.js";
+import { isFacebookConfigured, postToFacebook } from "./facebookClient.js";
 import { logger } from "./logger.js";
 
 const SITE = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com").replace(/\/+$/, "");
@@ -54,6 +55,21 @@ const ADAPTERS = {
       // endpoint so the post unfurls with the branded card.
       const imageUrl = `${SITE}/api/cards/og/${encodeURIComponent(article.id)}.png`;
       const out = await postToThreads({ text: composed.caption, imageUrl });
+      return { url: out.url, platformPostId: out.id };
+    },
+  },
+
+  facebook: {
+    name: "facebook",
+    minIntervalMs: 60 * 60 * 1000, // 60 min — Facebook algorithm rewards spacing over volume
+    composeKey: "facebook",
+    enabled: isFacebookConfigured,
+    async post(article, composed) {
+      // Photo post with branded OG card for maximum visual reach.
+      // Falls back to link post inside facebookClient if the image isn't reachable.
+      const imageUrl = `${SITE}/api/cards/og/${encodeURIComponent(article.id)}.png`;
+      const articleUrl = `${SITE}/article/${encodeURIComponent(article.id)}?utm_source=social_facebook&utm_medium=social&utm_campaign=scoop_auto`;
+      const out = await postToFacebook({ text: composed.caption, imageUrl, link: articleUrl });
       return { url: out.url, platformPostId: out.id };
     },
   },
