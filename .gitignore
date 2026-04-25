@@ -14,6 +14,10 @@ backend/data/*.db-wal
 # Generated branded cards (regenerated on demand from articles table)
 backend/data/cards/
 
+# VAPID private key — auto-generated on first boot if VAPID_*_KEY env vars
+# unset; treat like any other secret and never commit.
+backend/data/vapid.json
+
 # Logs
 *.log
 backend/logs/

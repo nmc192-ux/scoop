@@ -32,6 +32,7 @@ import SkimlinksLoader from "./components/ads/SkimlinksLoader";
 import ReaderModal from "./components/reader/ReaderModal";
 import OnboardingModal from "./components/onboarding/OnboardingModal";
 import NewsletterCaptureModal from "./components/newsletter/NewsletterCaptureModal";
+import PushOptInBanner from "./components/push/PushOptInBanner";
 
 export default function App() {
   const { activeTopics, searchQuery, lastRefreshed, language, savedArticles } = useNewsStore();
@@ -270,6 +271,7 @@ export default function App() {
       <ReaderModal />
       <OnboardingModal />
       <NewsletterCaptureModal />
+      <PushOptInBanner topics={activeTopics} language={language} />
 
       {/* ── Refresh toast ──────────────────────────────────────────── */}
       <AnimatePresence>

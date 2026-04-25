@@ -36,6 +36,11 @@ const ALLOWED_EVENTS = new Set([
   "reader_close",
   "topic_select",
   "refresh_click",
+  "push_optin_prompt_shown",
+  "push_subscribe_complete",
+  "push_subscribe_failed",
+  "push_permission_denied",
+  "push_unsubscribe",
 ]);
 
 function hashIp(ip) {

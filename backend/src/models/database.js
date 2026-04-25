@@ -118,6 +118,29 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_subscribers_email ON subscribers(email);
     CREATE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers(token);
 
+    -- ─── Push notification subscriptions ──────────────────────────────────
+    -- One row per browser+device opt-in. The endpoint URL is unique per
+    -- subscription (browsers re-issue if the user clears storage). p256dh
+    -- and auth are the per-subscription crypto keys we need to encrypt
+    -- payloads. Topics is a JSON array of category strings the user opted
+    -- into; empty/null means "all breaking news only".
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      endpoint    TEXT NOT NULL UNIQUE,
+      p256dh      TEXT NOT NULL,
+      auth        TEXT NOT NULL,
+      topics      TEXT DEFAULT '[]',
+      country     TEXT,
+      language    TEXT DEFAULT 'en',
+      user_agent  TEXT,
+      created_at  INTEGER NOT NULL,
+      last_sent_at INTEGER,
+      failure_count INTEGER DEFAULT 0,
+      disabled_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);
+    CREATE INDEX IF NOT EXISTS idx_push_active ON push_subscriptions(disabled_at);
+
     -- ─── Live Events (the "Live" tab) ──────────────────────────────────
     -- One row per tracked global event. The full dossier (brief points +
     -- metrics) is stored as JSON blobs so the shape can evolve without
@@ -560,4 +583,64 @@ export function listLiveEvents() {
 export function getLiveEvent(id) {
   const row = getDb().prepare(`SELECT * FROM live_events WHERE id = ?`).get(id);
   return hydrateEvent(row);
+}
+
+// ─── Push Subscriptions ──────────────────────────────────────────────────
+
+export function upsertPushSubscription({ endpoint, p256dh, auth, topics, country, language, userAgent }) {
+  const now = Date.now();
+  const topicsJson = JSON.stringify(Array.isArray(topics) ? topics : []);
+  getDb().prepare(`
+    INSERT INTO push_subscriptions (endpoint, p256dh, auth, topics, country, language, user_agent, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET
+      p256dh = excluded.p256dh,
+      auth = excluded.auth,
+      topics = excluded.topics,
+      country = excluded.country,
+      language = excluded.language,
+      user_agent = excluded.user_agent,
+      disabled_at = NULL,
+      failure_count = 0
+  `).run(endpoint, p256dh, auth, topicsJson, country || null, language || "en", (userAgent || "").slice(0, 200), now);
+}
+
+export function deletePushSubscription(endpoint) {
+  return getDb().prepare(`DELETE FROM push_subscriptions WHERE endpoint = ?`).run(endpoint).changes;
+}
+
+export function listActivePushSubscriptions({ topic } = {}) {
+  const rows = getDb().prepare(`
+    SELECT id, endpoint, p256dh, auth, topics, country, language
+    FROM push_subscriptions
+    WHERE disabled_at IS NULL
+  `).all();
+  if (!topic) return rows;
+  return rows.filter((r) => {
+    try { const t = JSON.parse(r.topics || "[]"); return !t.length || t.includes(topic); }
+    catch { return true; }
+  });
+}
+
+export function markPushSent(endpoint, success) {
+  const now = Date.now();
+  if (success) {
+    getDb().prepare(`UPDATE push_subscriptions SET last_sent_at = ?, failure_count = 0 WHERE endpoint = ?`).run(now, endpoint);
+  } else {
+    getDb().prepare(`UPDATE push_subscriptions SET failure_count = failure_count + 1 WHERE endpoint = ?`).run(endpoint);
+  }
+}
+
+export function disablePushSubscription(endpoint) {
+  getDb().prepare(`UPDATE push_subscriptions SET disabled_at = ? WHERE endpoint = ?`).run(Date.now(), endpoint);
+}
+
+export function pushSubscriptionStats() {
+  return getDb().prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN disabled_at IS NULL THEN 1 ELSE 0 END) AS active,
+      SUM(CASE WHEN disabled_at IS NOT NULL THEN 1 ELSE 0 END) AS disabled
+    FROM push_subscriptions
+  `).get();
 }

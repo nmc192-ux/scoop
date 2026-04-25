@@ -23,6 +23,7 @@ import trackRouter       from "./src/routes/track.js";
 import affiliateRouter   from "./src/routes/affiliate.js";
 import socialRouter      from "./src/routes/social.js";
 import cardsRouter       from "./src/routes/cards.js";
+import pushRouter        from "./src/routes/push.js";
 import { detectCountry } from "./src/services/geolocation.js";
 import { skimlinksPublisherId, amazonInfoForCountry } from "./src/config/affiliates.js";
 import { cacheMiddleware } from "./src/middleware/cache.js";
@@ -131,6 +132,7 @@ app.use("/api/live-events", liveEventsRouter); // "Live" tab dossiers (AI-synthe
 app.use("/api/track",       trackRouter);      // frontend event beacons (page_view, share, save, dwell, etc.)
 app.use("/api/affiliate",   affiliateRouter);  // geo-aware affiliate program picker + paywall CTA resolver
 app.use("/api/cards",       cardsRouter);      // branded OG/IG/Story PNG cards — disk-cached, 1-week public cache
+app.use("/api/push",        pushRouter);       // web push: VAPID public key, subscribe/unsubscribe, admin broadcast
 app.use("/admin",           socialRouter);     // /admin/social-queue — preview auto-generated social captions
 
 // Health

@@ -2,7 +2,7 @@
 // Bump CACHE_VERSION whenever this file's caching strategy meaningfully changes
 // so stale installs auto-upgrade on next activation.
 
-const CACHE_VERSION = "scoop-v1";
+const CACHE_VERSION = "scoop-v2";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -104,26 +104,49 @@ async function cacheFirst(req, cacheName) {
   return res;
 }
 
-// Push notification handler (Phase 2 will actually subscribe; keeping the
-// handler skeleton here so registering the SW now doesn't require a version
-// bump when push ships).
+// Push payload shape (sent by backend/src/routes/push.js):
+//   { title, body, url, icon, badge, timestamp }
+// We never trust the payload to omit fields — every render must work even
+// when the body is empty (some carriers strip large payloads).
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   let data = {};
   try { data = event.data.json(); } catch { data = { title: "Scoop", body: event.data.text() }; }
-  const { title = "Scoop", body = "", url = "/", icon = "/news-icon.svg" } = data;
+  const title = (data.title || "Scoop").slice(0, 120);
+  const body  = (data.body || "").slice(0, 240);
+  const url   = data.url || "/";
+  const icon  = data.icon || "/news-icon.svg";
+  const badge = data.badge || "/news-icon.svg";
+  const tag   = data.tag || `scoop-${Date.now()}`;
+
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
       icon,
-      badge: icon,
-      data: { url },
+      badge,
+      data: { url, ts: data.timestamp || Date.now() },
+      tag, // newer notifications with same tag replace older ones — avoids spam
+      renotify: false,
+      requireInteraction: false,
     }),
   );
 });
 
+// Focus an existing tab if one is open on our origin instead of opening a new
+// window every click. Falls back to opening a fresh window only if no tab is
+// available.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "/";
-  event.waitUntil(self.clients.openWindow(url));
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of all) {
+      const sameOrigin = new URL(client.url).origin === self.location.origin;
+      if (sameOrigin && "focus" in client) {
+        try { await client.navigate(url); } catch {}
+        return client.focus();
+      }
+    }
+    return self.clients.openWindow(url);
+  })());
 });
