@@ -1,9 +1,12 @@
 // Branded image cards for social/OG previews. Each article gets a typographic
-// card rendered on demand and cached on disk. Three presets:
+// card rendered on demand and cached on disk. Available presets:
 //
-//   GET /api/cards/og/:id.png      — 1200×630 (Open Graph + Twitter)
-//   GET /api/cards/square/:id.png  — 1080×1080 (Instagram feed)
-//   GET /api/cards/story/:id.png   — 1080×1920 (Stories / Shorts thumbnail)
+//   GET /api/cards/og/:id.png        — 1200×630  (Open Graph + Twitter)
+//   GET /api/cards/square/:id.png    — 1080×1080 (Instagram feed)
+//   GET /api/cards/story/:id.png     — 1080×1920 (Stories / Shorts thumbnail)
+//   GET /api/cards/carousel1/:id.png — 1080×1080 carousel slide 1 (cover)
+//   GET /api/cards/carousel2/:id.png — 1080×1080 carousel slide 2 (key points)
+//   GET /api/cards/carousel3/:id.png — 1080×1080 carousel slide 3 (CTA)
 //
 // Cards are deterministic: same article → same bytes. We send long cache
 // headers and a content-hash ETag so CDNs and crawlers cache aggressively.

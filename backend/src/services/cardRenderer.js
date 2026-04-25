@@ -41,10 +41,14 @@ export function isCardRendererReady() {
 // Preset dimensions chosen to match the platform's native aspect ratios so we
 // don't get center-cropped weirdly. OG is the Open Graph standard; square is
 // IG feed; story is IG/FB/TikTok stories and the Shorts thumbnail frame.
+// carousel1/2/3 are the three slides of an IG/Threads 1:1 carousel sequence.
 export const PRESETS = {
-  og:     { width: 1200, height: 630,  headlineSize: 58, padding: 72 },
-  square: { width: 1080, height: 1080, headlineSize: 68, padding: 80 },
-  story:  { width: 1080, height: 1920, headlineSize: 78, padding: 96 },
+  og:        { width: 1200, height: 630,  headlineSize: 58, padding: 72 },
+  square:    { width: 1080, height: 1080, headlineSize: 68, padding: 80 },
+  story:     { width: 1080, height: 1920, headlineSize: 78, padding: 96 },
+  carousel1: { width: 1080, height: 1080, headlineSize: 56, padding: 72 }, // cover
+  carousel2: { width: 1080, height: 1080, headlineSize: 36, padding: 72 }, // key points
+  carousel3: { width: 1080, height: 1080, headlineSize: 62, padding: 72 }, // CTA
 };
 
 const CATEGORY_COLORS = {
@@ -102,6 +106,289 @@ function headlineCap(preset) {
   return 200;
 }
 
+// ── Carousel helpers ──────────────────────────────────────────────────────────
+
+// Extract up to `count` sentence-level bullets from the article description.
+// Falls back to title if description is thin. Each bullet is capped at 160 chars.
+function extractBullets(article, count = 3) {
+  const raw = (article.description || article.content || "").replace(/\s+/g, " ").trim();
+  const sentences = raw
+    .split(/\.\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 45 && s.length < 300);
+  const picked = sentences.slice(0, count).map(s =>
+    truncate(s.endsWith(".") ? s : s + ".", 160)
+  );
+  while (picked.length < count) picked.push(truncate(article.title, 160));
+  return picked;
+}
+
+// Renders a row of pagination dots (active dot wider + colored).
+function paginationDots(activeIndex, total, color) {
+  return {
+    type: "div",
+    props: {
+      style: { display: "flex", gap: 8, alignItems: "center" },
+      children: Array.from({ length: total }, (_, i) => ({
+        type: "div",
+        props: {
+          style: {
+            display: "flex",
+            width: i === activeIndex ? 28 : 10,
+            height: 10,
+            borderRadius: 999,
+            backgroundColor: i === activeIndex ? color : "#3F3F46",
+          },
+        },
+      })),
+    },
+  };
+}
+
+// Reusable "scoopfeeds" wordmark node.
+function scoopWordmark(color) {
+  return {
+    type: "div",
+    props: {
+      style: { display: "flex", fontSize: 26, fontWeight: 700, letterSpacing: -0.5 },
+      children: [
+        { type: "span", props: { style: { display: "flex", color }, children: "scoop" } },
+        { type: "span", props: { style: { display: "flex", color: "#A1A1AA" }, children: "feeds" } },
+      ],
+    },
+  };
+}
+
+// Base dark card style shared across all 3 carousel slides.
+function carouselBase(color) {
+  return {
+    width: 1080,
+    height: 1080,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    padding: 72,
+    backgroundColor: "#0B0B0D",
+    backgroundImage: `linear-gradient(135deg, #0B0B0D 0%, #1A1A1F 60%, ${color}22 100%)`,
+    color: "#F5F5F7",
+    fontFamily: "Inter",
+  };
+}
+
+function buildCarouselTree(article, slide) {
+  const color = colorFor(article.category);
+  const label = labelFor(article.category);
+  const source = article.source_name ? `Via ${article.source_name}` : "";
+  const dots = paginationDots(slide - 1, 3, color);
+  const mark = scoopWordmark(color);
+  const base = carouselBase(color);
+
+  const categoryPill = {
+    type: "div",
+    props: {
+      style: {
+        display: "flex", backgroundColor: color, color: "#fff",
+        padding: "10px 22px", borderRadius: 999,
+        fontSize: 20, fontWeight: 700, letterSpacing: 2,
+      },
+      children: label,
+    },
+  };
+
+  const topRow = (leftNode) => ({
+    type: "div",
+    props: {
+      style: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" },
+      children: [leftNode, mark],
+    },
+  });
+
+  if (slide === 1) {
+    // Slide 1: Cover — headline front-and-center with category badge.
+    const headline = truncate(article.title, 160);
+    return {
+      type: "div",
+      props: {
+        style: base,
+        children: [
+          topRow(categoryPill),
+          {
+            type: "div",
+            props: {
+              style: {
+                display: "flex",
+                flexGrow: 1,
+                alignItems: "center",
+                fontSize: 56,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                letterSpacing: -1,
+                color: "#F5F5F7",
+                paddingTop: 24,
+                paddingBottom: 24,
+              },
+              children: headline,
+            },
+          },
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", fontSize: 20, color: "#A1A1AA" },
+              children: [
+                { type: "div", props: { style: { display: "flex" }, children: source } },
+                dots,
+              ],
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  if (slide === 2) {
+    // Slide 2: Key Points — 3 sentence bullets from description.
+    const bullets = extractBullets(article);
+    const bulletNodes = bullets.map(b => ({
+      type: "div",
+      props: {
+        style: { display: "flex", flexDirection: "row", alignItems: "flex-start", gap: 20, marginBottom: 36 },
+        children: [
+          {
+            type: "div",
+            props: {
+              style: {
+                display: "flex",
+                width: 10,
+                height: 10,
+                borderRadius: 999,
+                backgroundColor: color,
+                marginTop: 13,
+                flexShrink: 0,
+              },
+            },
+          },
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", fontSize: 30, fontWeight: 600, lineHeight: 1.45, color: "#E4E4E7" },
+              children: b,
+            },
+          },
+        ],
+      },
+    }));
+
+    const keyPointsBadge = {
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          backgroundColor: color + "22",
+          color,
+          padding: "8px 20px",
+          borderRadius: 999,
+          fontSize: 18,
+          fontWeight: 700,
+          letterSpacing: 3,
+          borderWidth: 2,
+          borderStyle: "solid",
+          borderColor: color,
+        },
+        children: "KEY POINTS",
+      },
+    };
+
+    return {
+      type: "div",
+      props: {
+        style: base,
+        children: [
+          topRow(keyPointsBadge),
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", flexDirection: "column", flexGrow: 1, justifyContent: "center", paddingTop: 20, paddingBottom: 20 },
+              children: bulletNodes,
+            },
+          },
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", fontSize: 18, color: "#71717A" },
+              children: [
+                { type: "div", props: { style: { display: "flex" }, children: truncate(article.title, 60) } },
+                dots,
+              ],
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  // Slide 3: CTA — read the full story.
+  const siteDomain = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com")
+    .replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  return {
+    type: "div",
+    props: {
+      style: base,
+      children: [
+        topRow(categoryPill),
+        {
+          type: "div",
+          props: {
+            style: { display: "flex", flexDirection: "column", flexGrow: 1, justifyContent: "center", gap: 28 },
+            children: [
+              {
+                type: "div",
+                props: {
+                  style: { display: "flex", fontSize: 36, fontWeight: 600, color: "#A1A1AA", letterSpacing: -0.5 },
+                  children: "Read the full story at",
+                },
+              },
+              // URL with color underline accent div below it
+              {
+                type: "div",
+                props: {
+                  style: { display: "flex", flexDirection: "column", gap: 10 },
+                  children: [
+                    {
+                      type: "div",
+                      props: {
+                        style: { display: "flex", fontSize: 62, fontWeight: 700, color: "#F5F5F7", letterSpacing: -2 },
+                        children: siteDomain,
+                      },
+                    },
+                    { type: "div", props: { style: { display: "flex", height: 5, backgroundColor: color, borderRadius: 3, width: "100%" } } },
+                  ],
+                },
+              },
+              {
+                type: "div",
+                props: {
+                  style: { display: "flex", fontSize: 24, fontWeight: 600, color: "#52525B" },
+                  children: truncate(article.title, 100),
+                },
+              },
+            ],
+          },
+        },
+        {
+          type: "div",
+          props: {
+            style: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", fontSize: 20, color: "#71717A" },
+            children: [
+              { type: "div", props: { style: { display: "flex" }, children: "News, sniffed out." } },
+              dots,
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
 // Hash that invalidates the cache if the headline or category changes.
 function contentHash(article) {
   const h = createHash("sha1");
@@ -119,6 +406,11 @@ function cachePath(articleId, preset, hash) {
 }
 
 function buildTree(article, preset) {
+  if (preset.startsWith("carousel")) {
+    const slide = parseInt(preset.replace("carousel", ""), 10);
+    if (slide >= 1 && slide <= 3) return buildCarouselTree(article, slide);
+  }
+
   const dims = PRESETS[preset];
   const color = colorFor(article.category);
   const label = labelFor(article.category);
@@ -241,4 +533,19 @@ export function cardUrl(articleId, preset = "og", siteUrl = "") {
   const base = String(siteUrl || "").replace(/\/+$/, "");
   const safeId = encodeURIComponent(articleId);
   return `${base}/api/cards/${preset}/${safeId}.png`;
+}
+
+// Convenience: generate (or return cached) all 3 carousel slides for an article.
+// Returns [slide1, slide2, slide3] where each is { path, buffer, contentType, hit }.
+export async function ensureCarousel(article) {
+  return Promise.all([
+    ensureCard(article, "carousel1"),
+    ensureCard(article, "carousel2"),
+    ensureCard(article, "carousel3"),
+  ]);
+}
+
+// Returns the public URL array for the 3 carousel slides.
+export function carouselUrls(articleId, siteUrl = "") {
+  return [1, 2, 3].map(i => cardUrl(articleId, `carousel${i}`, siteUrl));
 }
