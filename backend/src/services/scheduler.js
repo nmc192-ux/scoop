@@ -8,6 +8,7 @@ import { RSS_SOURCES, YOUTUBE_SOURCES } from "../config/sources.js";
 import { sendDailyDigest } from "./digest.js";
 import { refreshAllEvents } from "./liveEvents.js";
 import { runBreakingNewsPush } from "./breakingNewsPusher.js";
+import { runAllPlatformsCycle, listEnabledPlatforms } from "./socialPublisher.js";
 
 let isRunning    = false;
 let isVideoRun   = false;
@@ -86,6 +87,16 @@ async function runIngestionCycle() {
     if (String(process.env.ENABLE_BREAKING_PUSH ?? "true").toLowerCase() !== "false") {
       try { await runBreakingNewsPush(); }
       catch (err) { logger.error("❌ Breaking push failed", { error: err.message }); }
+    }
+    // Tail step: auto-post to social. Each adapter's own minIntervalMs
+    // throttles how often it actually fires; if no platform is configured
+    // (env vars missing) this is a near-instant no-op.
+    if (String(process.env.ENABLE_AUTO_SOCIAL ?? "true").toLowerCase() !== "false") {
+      const enabled = listEnabledPlatforms();
+      if (enabled.length) {
+        try { await runAllPlatformsCycle(); }
+        catch (err) { logger.error("❌ Auto-social failed", { error: err.message }); }
+      }
     }
   } catch (err) {
     logger.error("❌ News failed", { error: err.message });

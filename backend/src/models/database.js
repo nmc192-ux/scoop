@@ -155,6 +155,25 @@ function initializeSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_pushed_recency ON pushed_articles(pushed_at);
 
+    -- Audit log of every outbound social post. Unique on (article, platform)
+    -- so the same article never posts twice to the same network. The
+    -- platform_post_id + url come back from the platform's API and are
+    -- handy for later metrics fetching + manual moderation.
+    CREATE TABLE IF NOT EXISTS social_posts (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id      TEXT NOT NULL,
+      platform        TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'posted',
+      platform_post_id TEXT,
+      url             TEXT,
+      caption         TEXT,
+      error           TEXT,
+      posted_at       INTEGER NOT NULL,
+      UNIQUE(article_id, platform)
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_recency ON social_posts(posted_at);
+    CREATE INDEX IF NOT EXISTS idx_social_platform ON social_posts(platform, posted_at);
+
     -- ─── Live Events (the "Live" tab) ──────────────────────────────────
     -- One row per tracked global event. The full dossier (brief points +
     -- metrics) is stored as JSON blobs so the shape can evolve without
@@ -676,6 +695,58 @@ export function recordArticlePush(articleId, topic, { sent = 0, failed = 0 } = {
       sent = excluded.sent,
       failed = excluded.failed
   `).run(articleId, topic, Date.now(), sent, failed);
+}
+
+// ─── Social posting helpers ──────────────────────────────────────────────
+
+export function hasArticleBeenPosted(articleId, platform) {
+  return Boolean(
+    getDb().prepare(`SELECT 1 FROM social_posts WHERE article_id = ? AND platform = ?`).get(articleId, platform),
+  );
+}
+
+export function recordSocialPost({ articleId, platform, status = "posted", platformPostId = null, url = null, caption = null, error = null }) {
+  getDb().prepare(`
+    INSERT INTO social_posts (article_id, platform, status, platform_post_id, url, caption, error, posted_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(article_id, platform) DO UPDATE SET
+      status = excluded.status,
+      platform_post_id = excluded.platform_post_id,
+      url = excluded.url,
+      caption = excluded.caption,
+      error = excluded.error,
+      posted_at = excluded.posted_at
+  `).run(articleId, platform, status, platformPostId, url, caption, error, Date.now());
+}
+
+export function lastPostAt(platform) {
+  const row = getDb().prepare(`SELECT MAX(posted_at) AS at FROM social_posts WHERE platform = ? AND status = 'posted'`).get(platform);
+  return row?.at || 0;
+}
+
+export function findFreshUnpostedArticles({ platform, minCredibility = 7, withinMs = 12 * 60 * 60 * 1000, limit = 10 } = {}) {
+  const cutoff = Date.now() - withinMs;
+  return getDb().prepare(`
+    SELECT a.id, a.title, a.description, a.category, a.source_name, a.published_at, a.credibility, a.url, a.image_url
+    FROM articles a
+    LEFT JOIN social_posts s ON s.article_id = a.id AND s.platform = ?
+    WHERE s.article_id IS NULL
+      AND a.published_at > ?
+      AND a.credibility >= ?
+    ORDER BY a.credibility DESC, a.published_at DESC
+    LIMIT ?
+  `).all(platform, cutoff, minCredibility, limit);
+}
+
+export function socialPostStats({ withinMs = 24 * 60 * 60 * 1000 } = {}) {
+  const cutoff = Date.now() - withinMs;
+  return getDb().prepare(`
+    SELECT platform, status, COUNT(*) AS n
+    FROM social_posts
+    WHERE posted_at > ?
+    GROUP BY platform, status
+    ORDER BY platform
+  `).all(cutoff);
 }
 
 // Pick fresh, high-credibility articles that haven't been pushed yet, ordered

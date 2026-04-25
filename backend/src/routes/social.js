@@ -7,8 +7,10 @@
 //   GET /admin/social-queue       — human-readable HTML, copy-paste friendly
 
 import { Router } from "express";
-import { getDb } from "../models/database.js";
+import express from "express";
+import { getDb, socialPostStats } from "../models/database.js";
 import { composeAllPlatforms } from "../services/socialComposer.js";
+import { runPlatformCycle, listEnabledPlatforms, runAllPlatformsCycle } from "../services/socialPublisher.js";
 
 const router = Router();
 
@@ -62,6 +64,34 @@ router.get("/social-queue", requireAdmin, (_req, res) => {
   }).filter(Boolean);
 
   res.type("html").send(renderPage(composed));
+});
+
+// ── Auto-poster admin endpoints ────────────────────────────────────────
+// JSON middleware needed for POST bodies; the queue routes above are GETs.
+const jsonParser = express.json({ limit: "8kb" });
+
+router.get("/auto-status", requireAdmin, (_req, res) => {
+  res.json({
+    ok: true,
+    enabled: listEnabledPlatforms(),
+    last24h: socialPostStats({ withinMs: 24 * 60 * 60 * 1000 }),
+  });
+});
+
+// POST /admin/auto-post?platform=bluesky&dry=1
+router.post("/auto-post", requireAdmin, jsonParser, async (req, res) => {
+  const platform = (req.query.platform || req.body?.platform || "").toString();
+  const dryRun = req.query.dry === "1" || req.body?.dry === true;
+  try {
+    if (platform) {
+      const out = await runPlatformCycle(platform, { dryRun });
+      return res.json({ ok: true, ...out });
+    }
+    const out = await runAllPlatformsCycle({ dryRun });
+    res.json({ ok: true, results: out });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 function xmlEscape(s = "") {
