@@ -181,7 +181,12 @@ router.get("/article/:id", (req, res) => {
   try { incrementViewCount(article.id); } catch {}
 
   const canonical = `${SITE}/article/${encodeURIComponent(article.id)}`;
-  const image = article.image_url || `${SITE}/news-icon.svg`;
+  // Branded OG card (1200×630) — typographic, no licensed source imagery.
+  // Used for og:image / twitter:image so social unfurls are consistent and
+  // copyright-clean. JSON-LD still references the source hero image when we
+  // have one, since Google News prefers the actual article photo.
+  const ogCard = `${SITE}/api/cards/og/${encodeURIComponent(article.id)}.png`;
+  const schemaImage = article.image_url || ogCard;
   const desc = (article.description || article.title || "").slice(0, 300);
   const title = `${article.title} — Scoop`;
   const published = new Date(article.published_at).toISOString();
@@ -202,7 +207,7 @@ router.get("/article/:id", (req, res) => {
     "@type": "NewsArticle",
     "headline": article.title,
     "description": desc,
-    "image": [image],
+    "image": [schemaImage],
     "datePublished": published,
     "dateModified": published,
     "author": [{ "@type": "Organization", "name": article.source_name || "Scoop" }],
@@ -231,7 +236,9 @@ router.get("/article/:id", (req, res) => {
 <meta property="og:type" content="article">
 <meta property="og:title" content="${xmlEscape(article.title)}">
 <meta property="og:description" content="${xmlEscape(desc)}">
-<meta property="og:image" content="${xmlEscape(image)}">
+<meta property="og:image" content="${xmlEscape(ogCard)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:url" content="${canonical}">
 <meta property="og:site_name" content="Scoop">
 <meta property="article:published_time" content="${published}">
@@ -239,7 +246,7 @@ router.get("/article/:id", (req, res) => {
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${xmlEscape(article.title)}">
 <meta name="twitter:description" content="${xmlEscape(desc)}">
-<meta name="twitter:image" content="${xmlEscape(image)}">
+<meta name="twitter:image" content="${xmlEscape(ogCard)}">
 <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-E7CDBSB5KY"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-E7CDBSB5KY');</script>
