@@ -141,6 +141,20 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);
     CREATE INDEX IF NOT EXISTS idx_push_active ON push_subscriptions(disabled_at);
 
+    -- Tracks which articles have already been broadcast as a push, so the
+    -- breaking-news worker never pushes the same story twice (one row per
+    -- article × topic — most rows will have topic = '*' for the global
+    -- broadcast).
+    CREATE TABLE IF NOT EXISTS pushed_articles (
+      article_id TEXT NOT NULL,
+      topic      TEXT NOT NULL DEFAULT '*',
+      pushed_at  INTEGER NOT NULL,
+      sent       INTEGER DEFAULT 0,
+      failed     INTEGER DEFAULT 0,
+      PRIMARY KEY (article_id, topic)
+    );
+    CREATE INDEX IF NOT EXISTS idx_pushed_recency ON pushed_articles(pushed_at);
+
     -- ─── Live Events (the "Live" tab) ──────────────────────────────────
     -- One row per tracked global event. The full dossier (brief points +
     -- metrics) is stored as JSON blobs so the shape can evolve without
@@ -643,4 +657,39 @@ export function pushSubscriptionStats() {
       SUM(CASE WHEN disabled_at IS NOT NULL THEN 1 ELSE 0 END) AS disabled
     FROM push_subscriptions
   `).get();
+}
+
+// ─── Push dedupe ─────────────────────────────────────────────────────────
+
+export function hasArticleBeenPushed(articleId, topic = "*") {
+  return Boolean(
+    getDb().prepare(`SELECT 1 FROM pushed_articles WHERE article_id = ? AND topic = ?`).get(articleId, topic),
+  );
+}
+
+export function recordArticlePush(articleId, topic, { sent = 0, failed = 0 } = {}) {
+  getDb().prepare(`
+    INSERT INTO pushed_articles (article_id, topic, pushed_at, sent, failed)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(article_id, topic) DO UPDATE SET
+      pushed_at = excluded.pushed_at,
+      sent = excluded.sent,
+      failed = excluded.failed
+  `).run(articleId, topic, Date.now(), sent, failed);
+}
+
+// Pick fresh, high-credibility articles that haven't been pushed yet, ordered
+// by recency. Used by the breaking-news worker.
+export function findFreshUnpushedArticles({ minCredibility = 8, withinMs = 30 * 60 * 1000, limit = 5 } = {}) {
+  const cutoff = Date.now() - withinMs;
+  return getDb().prepare(`
+    SELECT a.id, a.title, a.description, a.category, a.source_name, a.published_at, a.credibility, a.url
+    FROM articles a
+    LEFT JOIN pushed_articles p ON p.article_id = a.id AND p.topic = '*'
+    WHERE p.article_id IS NULL
+      AND a.published_at > ?
+      AND a.credibility >= ?
+    ORDER BY a.credibility DESC, a.published_at DESC
+    LIMIT ?
+  `).all(cutoff, minCredibility, limit);
 }

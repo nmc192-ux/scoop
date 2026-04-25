@@ -15,6 +15,7 @@ import {
   sendTestPush,
   ensurePushReady,
 } from "../services/pushService.js";
+import { runBreakingNewsPush } from "../services/breakingNewsPusher.js";
 import { detectCountry } from "../services/geolocation.js";
 import { logger } from "../services/logger.js";
 
@@ -89,6 +90,25 @@ router.post("/broadcast", requireAdmin, async (req, res) => {
   } catch (err) {
     logger.error(`push broadcast failed: ${err.message}`);
     res.status(500).json({ ok: false, error: "broadcast failed" });
+  }
+});
+
+// Trigger the breaking-news worker on demand. Pass ?dry=1 to preview the
+// candidate without actually broadcasting — useful when verifying that the
+// dedupe + safety filters are picking the right story.
+router.post("/breaking", requireAdmin, async (req, res) => {
+  const dryRun = req.query.dry === "1" || req.body?.dry === true;
+  const opts = {
+    dryRun,
+    minCredibility: req.body?.minCredibility,
+    withinMs: req.body?.withinMs,
+  };
+  try {
+    const out = await runBreakingNewsPush(opts);
+    res.json({ ok: true, dryRun, ...out });
+  } catch (err) {
+    logger.error(`breaking-news trigger failed: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

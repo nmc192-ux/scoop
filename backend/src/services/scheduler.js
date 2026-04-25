@@ -7,6 +7,7 @@ import { logger } from "./logger.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "../config/sources.js";
 import { sendDailyDigest } from "./digest.js";
 import { refreshAllEvents } from "./liveEvents.js";
+import { runBreakingNewsPush } from "./breakingNewsPusher.js";
 
 let isRunning    = false;
 let isVideoRun   = false;
@@ -79,6 +80,13 @@ async function runIngestionCycle() {
   try {
     const r = await fetchAllSources(RSS_SOURCES);
     logger.info(`📰 Done: +${r.totalNew} in ${r.duration}ms`);
+    // Tail step: if a fresh high-credibility article landed, fan it out as a
+    // push. Skipped silently if no candidate, in quiet hours, or push is
+    // disabled. Errors here must not break the ingest cycle.
+    if (String(process.env.ENABLE_BREAKING_PUSH ?? "true").toLowerCase() !== "false") {
+      try { await runBreakingNewsPush(); }
+      catch (err) { logger.error("❌ Breaking push failed", { error: err.message }); }
+    }
   } catch (err) {
     logger.error("❌ News failed", { error: err.message });
   } finally {
