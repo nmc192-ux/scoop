@@ -35,6 +35,7 @@ import OnboardingModal from "./components/onboarding/OnboardingModal";
 import NewsletterCaptureModal from "./components/newsletter/NewsletterCaptureModal";
 import PushOptInBanner from "./components/push/PushOptInBanner";
 import AuthModal from "./components/auth/AuthModal";
+import { useAuth } from "./hooks/useAuth";
 
 export default function App() {
   const { activeTopics, searchQuery, lastRefreshed, language, savedArticles, authOpen, setAuthOpen } = useNewsStore();
@@ -45,9 +46,11 @@ export default function App() {
   const { data: featured = [], isLoading: featuredLoading } = useFeatured();
   const { data: health, isError: isOffline } = useHealth();
   const { data: publicConfig } = usePublicConfig();
+  const { isPremium } = useAuth();
   const refresh = useRefresh();
   const isUrdu = language === "ur";
-  const adSenseConfig = publicConfig?.adsense;
+  // Premium users get an ad-free experience — skip rendering all AdSense units.
+  const adSenseConfig = isPremium ? null : publicConfig?.adsense;
 
   // SSE live update stream
   useEffect(() => {

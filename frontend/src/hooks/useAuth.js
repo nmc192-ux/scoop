@@ -81,6 +81,7 @@ export function useAuth() {
     loading,
     error,
     isLoggedIn: Boolean(user),
+    isPremium: user?.tier === "premium",
     requestLink,
     logout,
     updatePrefs,

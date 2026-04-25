@@ -190,6 +190,19 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_tips_created ON tips(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_tips_status  ON tips(status);
 
+    -- ─── Metered paywall ─────────────────────────────────────────────
+    -- Tracks article opens per device (identified by SHA-256(IP+UA) hash) or
+    -- per authenticated user. Limit is METER_FREE_LIMIT env var (default 10/mo).
+    -- Premium users (tier='premium') are excluded from the check entirely.
+    CREATE TABLE IF NOT EXISTS meter_events (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_key TEXT NOT NULL,   -- SHA-256(IP+UA) for anon, user_id for auth
+      article_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(device_key, article_id)  -- each article counts once per device
+    );
+    CREATE INDEX IF NOT EXISTS idx_meter_device ON meter_events(device_key, created_at DESC);
+
     -- ─── Magic-link Auth ─────────────────────────────────────────────
     -- users: one row per verified email. Stores cross-device preferences.
     CREATE TABLE IF NOT EXISTS users (
@@ -200,7 +213,8 @@ function initializeSchema(db) {
       preferred_topics  TEXT DEFAULT '[]',    -- JSON array of category strings
       preferred_country TEXT,
       language     TEXT DEFAULT 'en',
-      subscriber_token TEXT                   -- FK to subscribers.token (nullable)
+      subscriber_token TEXT,                  -- FK to subscribers.token (nullable)
+      tier         TEXT NOT NULL DEFAULT 'free'  -- free | premium
     );
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
@@ -306,6 +320,17 @@ function initializeSchema(db) {
     }
   } catch (err) {
     logger.warn("Migration check failed", { error: err.message });
+  }
+
+  // Migration: add `tier` column to users (free | premium) for paywall gating.
+  try {
+    const cols = db.prepare("PRAGMA table_info(users)").all();
+    if (cols.length && !cols.some((c) => c.name === "tier")) {
+      db.exec("ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'");
+      logger.info("Migrated users table: +tier");
+    }
+  } catch (err) {
+    logger.warn("Migration check (users.tier) failed", { error: err.message });
   }
 
   // Migration: add referred_by_token + referral_count to subscribers.
@@ -1078,6 +1103,69 @@ export function getUserCategoryWeights(userId) {
                         + (r.deep_reads || 0) * 2 + (r.saves || 0) * 3;
   }
   return weights;
+}
+
+// ─── Metered paywall helpers ─────────────────────────────────────────────────
+
+const METER_FREE_LIMIT = parseInt(process.env.METER_FREE_LIMIT || "10", 10);
+const METER_WINDOW_MS  = 30 * 24 * 60 * 60 * 1000; // 30-day rolling window
+
+/**
+ * Check the meter for a device/user and optionally record this open.
+ * Returns { allowed: bool, count: number, limit: number, isPremium: bool }.
+ *
+ * If `record` is true and the device is under limit, inserts a meter_event row.
+ * The device_key should be SHA-256(IP+salt) for anon users, or user_id for auth.
+ * Premium users are always allowed (tier === 'premium').
+ */
+export function checkMeter(deviceKey, articleId, { record = false, userId = null } = {}) {
+  const db = getDb();
+
+  // If userId is provided, check tier first — premium bypasses meter entirely.
+  if (userId) {
+    const user = db.prepare(`SELECT tier FROM users WHERE id = ?`).get(userId);
+    if (user?.tier === "premium") {
+      return { allowed: true, count: 0, limit: METER_FREE_LIMIT, isPremium: true };
+    }
+  }
+
+  const windowStart = Date.now() - METER_WINDOW_MS;
+  const count = db.prepare(`
+    SELECT COUNT(DISTINCT article_id) AS n
+    FROM meter_events
+    WHERE device_key = ? AND created_at > ?
+  `).get(deviceKey, windowStart).n;
+
+  // Has this specific article already been opened? (doesn't count against limit again)
+  const alreadyOpened = Boolean(
+    db.prepare(`SELECT 1 FROM meter_events WHERE device_key = ? AND article_id = ?`)
+      .get(deviceKey, articleId)
+  );
+
+  const allowed = alreadyOpened || count < METER_FREE_LIMIT;
+
+  if (record && allowed && !alreadyOpened) {
+    try {
+      db.prepare(`
+        INSERT OR IGNORE INTO meter_events (device_key, article_id, created_at)
+        VALUES (?, ?, ?)
+      `).run(deviceKey, articleId, Date.now());
+    } catch { /* ignore unique violation */ }
+  }
+
+  return { allowed, count: Math.min(count + (alreadyOpened ? 0 : 1), METER_FREE_LIMIT), limit: METER_FREE_LIMIT, isPremium: false };
+}
+
+export function getMeterCount(deviceKey) {
+  const windowStart = Date.now() - METER_WINDOW_MS;
+  return getDb().prepare(`
+    SELECT COUNT(DISTINCT article_id) AS n
+    FROM meter_events WHERE device_key = ? AND created_at > ?
+  `).get(deviceKey, windowStart).n;
+}
+
+export function upgradeTier(userId, tier = "premium") {
+  getDb().prepare(`UPDATE users SET tier = ? WHERE id = ?`).run(tier, userId);
 }
 
 // ─── Video job queue helpers ─────────────────────────────────────────────────

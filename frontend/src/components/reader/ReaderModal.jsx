@@ -36,10 +36,30 @@ const FONT_SIZES = [
 
 export default function ReaderModal() {
   const { article, open, closeReader, openReader } = useReaderStore();
-  const { saveArticle, savedArticles, language, autoLanguage } = useNewsStore();
+  const { saveArticle, savedArticles, language, autoLanguage, setAuthOpen } = useNewsStore();
   const { data: publicConfig } = usePublicConfig();
   const url = open ? article?.url : null;
   const { data, isLoading, isError, error } = useReaderArticle(url);
+
+  // ── Metered paywall gate ────────────────────────────────────────────────
+  // When meter is enabled, POST /api/meter/open on each article open.
+  // Over-limit: show a soft wall instead of the article body.
+  const meterEnabled  = publicConfig?.meter?.enabled !== false;
+  const meterLimit    = publicConfig?.meter?.freeLimit ?? 10;
+  const [meterResult, setMeterResult] = useState(null); // { allowed, count, limit, isPremium }
+  useEffect(() => {
+    if (!open || !article?.id) { setMeterResult(null); return; }
+    if (!meterEnabled) { setMeterResult({ allowed: true }); return; }
+    fetch("/api/meter/open", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ articleId: article.id }),
+    })
+      .then(r => r.ok ? r.json() : { allowed: true })
+      .then(d => setMeterResult(d))
+      .catch(() => setMeterResult({ allowed: true })); // fail open
+  }, [open, article?.id, meterEnabled]);
 
   // Related stories — fetched only once the modal is open and we know the
   // article's category. Cached for 2 minutes to avoid thrashing when the user
@@ -223,7 +243,40 @@ export default function ReaderModal() {
                 </p>
               )}
 
-              {isLoading && (
+              {/* ── Metered soft wall ─────────────────────────────────── */}
+              {meterResult && !meterResult.allowed && !meterResult.isPremium && (
+                <div className="rounded-2xl border border-[var(--color-border)] p-8 text-center my-4">
+                  <div className="text-4xl mb-4">📰</div>
+                  <h3 className="text-xl font-bold text-[var(--color-text)] mb-2">
+                    You've read {meterLimit} free stories this month
+                  </h3>
+                  <p className="text-sm text-[var(--color-text-tertiary)] mb-6 max-w-sm mx-auto">
+                    Sign in for unlimited reading — it's free and takes 10 seconds.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <button
+                      onClick={() => { closeReader(); setAuthOpen(true); }}
+                      className="px-6 py-2.5 rounded-full bg-brand-blue text-white text-sm font-semibold hover:opacity-90"
+                    >
+                      Sign in free →
+                    </button>
+                    <a
+                      href={article.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={handleSourceClick}
+                      className="px-6 py-2.5 rounded-full border border-[var(--color-border)] text-sm font-semibold hover:bg-[var(--color-surface2)]"
+                    >
+                      Read on {new URL(article.url).hostname}
+                    </a>
+                  </div>
+                  <p className="text-xs text-[var(--color-text-tertiary)] mt-4">
+                    No password. Just your email. ✉️
+                  </p>
+                </div>
+              )}
+
+              {isLoading && (!meterResult || meterResult.allowed) && (
                 <div className="space-y-3 animate-pulse">
                   {Array.from({ length: 8 }).map((_, i) => (
                     <div key={i} className="h-4 rounded bg-[var(--color-surface2)]" style={{ width: `${80 + Math.random() * 20}%` }} />
@@ -231,7 +284,7 @@ export default function ReaderModal() {
                 </div>
               )}
 
-              {isError && (
+              {isError && (!meterResult || meterResult.allowed) && (
                 <div className="rounded-xl border border-[var(--color-border)] p-6 text-center">
                   <p className="font-semibold mb-2">Couldn't extract this article</p>
                   <p className="text-sm opacity-70 mb-4">
@@ -249,7 +302,7 @@ export default function ReaderModal() {
                 </div>
               )}
 
-              {html && (
+              {html && (!meterResult || meterResult.allowed) && (
                 <article
                   className="reader-body"
                   style={{ lineHeight: 1.7 }}
@@ -257,7 +310,7 @@ export default function ReaderModal() {
                 />
               )}
 
-              {data?.length > 0 && (
+              {data?.length > 0 && (!meterResult || meterResult.allowed) && (
                 <p className="text-xs opacity-50 mt-10 pt-6 border-t border-[var(--color-border)]">
                   Extracted from {new URL(article.url).hostname} · approx {Math.max(1, Math.round(data.length / 1100))} min read ·{" "}
                   <a href={article.url} target="_blank" rel="noopener noreferrer" onClick={handleSourceClick} className="underline">original</a>

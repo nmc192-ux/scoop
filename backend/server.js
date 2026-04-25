@@ -27,6 +27,7 @@ import pushRouter        from "./src/routes/push.js";
 import authRouter        from "./src/routes/auth.js";
 import tipsRouter        from "./src/routes/tips.js";
 import videoGenRouter    from "./src/routes/videos-gen.js";
+import meterRouter       from "./src/routes/meter.js";
 import { detectCountry } from "./src/services/geolocation.js";
 import { skimlinksPublisherId, amazonInfoForCountry } from "./src/config/affiliates.js";
 import { isStripeConfigured } from "./src/routes/tips.js";
@@ -141,6 +142,7 @@ app.use("/api/cards",       cardsRouter);      // branded OG/IG/Story PNG cards 
 app.use("/api/push",        pushRouter);       // web push: VAPID public key, subscribe/unsubscribe, admin broadcast
 app.use("/api/auth",        authRouter);       // magic-link auth: /request, /verify, /me, /logout, /saves
 app.use("/api/tips",        tipsRouter);       // Stripe tip jar: /create-session, /webhook, /stats
+app.use("/api/meter",       meterRouter);      // metered paywall: /open (gate check + record), /status
 app.use("/scoop-ops",       socialRouter);     // /scoop-ops/social-queue — preview auto-generated social captions (renamed from /admin to bypass host WAF)
 app.use("/scoop-ops/videos-gen", videoGenRouter); // video generation queue: /queue, /run, /approve/:id, /reject/:id
 
@@ -192,6 +194,10 @@ app.get("/api/public-config", (req, res) => {
     stripe: {
       configured: isStripeConfigured(),
       publishableKey: process.env.STRIPE_PUBLISHABLE_KEY?.trim() || "",
+    },
+    meter: {
+      enabled: String(process.env.METER_ENABLED ?? "true").toLowerCase() !== "false",
+      freeLimit: parseInt(process.env.METER_FREE_LIMIT || "10", 10),
     },
   });
 });

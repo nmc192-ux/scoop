@@ -164,6 +164,7 @@ router.get("/me", (req, res) => {
       language: user.language,
       preferredTopics: topics,
       preferredCountry: user.preferred_country,
+      tier: user.tier || "free",
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at,
     },

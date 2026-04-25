@@ -17,6 +17,33 @@ const SITE_URL = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com").repl
 const PER_DIGEST = 8;
 const LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
+// ── Sponsor slot ─────────────────────────────────────────────────────────────
+// To activate: set these env vars in your Hostinger panel. Leave blank to hide.
+//   NEWSLETTER_SPONSOR_NAME    — brand name, e.g. "Acme Corp"
+//   NEWSLETTER_SPONSOR_TAGLINE — one-line description, e.g. "The best widget maker"
+//   NEWSLETTER_SPONSOR_URL     — UTM-tagged click-through URL
+//   NEWSLETTER_SPONSOR_CTA     — button label, e.g. "Learn more →" (defaults to "Learn more →")
+function getSponsorBlock() {
+  const name     = (process.env.NEWSLETTER_SPONSOR_NAME    || "").trim();
+  const tagline  = (process.env.NEWSLETTER_SPONSOR_TAGLINE || "").trim();
+  const url      = (process.env.NEWSLETTER_SPONSOR_URL     || "").trim();
+  const cta      = (process.env.NEWSLETTER_SPONSOR_CTA     || "Learn more →").trim();
+  if (!name || !url) return { html: "", text: "" };
+  return {
+    html: `
+      <div style="margin:18px 0 22px;padding:14px 18px;background:#fffbeb;border-radius:10px;border:1px solid #fde68a">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#92400e;margin-bottom:6px;font-weight:700">
+          Presented by
+        </div>
+        <div style="font-weight:700;font-size:15px;color:#111;margin-bottom:4px">${escapeHtml(name)}</div>
+        ${tagline ? `<div style="font-size:13px;color:#555;margin-bottom:10px;line-height:1.5">${escapeHtml(tagline)}</div>` : ""}
+        <a href="${escapeHtml(url)}" style="display:inline-block;background:#d97706;color:#fff;padding:8px 18px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">${escapeHtml(cta)}</a>
+      </div>
+    `,
+    text: `\n─ Presented by ${name}${tagline ? " — " + tagline : ""}\n${url}\n`,
+  };
+}
+
 function pickTopArticles(categories) {
   const db = getDb();
   const since = Date.now() - LOOKBACK_MS;
@@ -39,7 +66,7 @@ function pickTopArticles(categories) {
   `).all(since, PER_DIGEST);
 }
 
-function renderDigestHtml(articles, unsubUrl, { referralUrl = null, referralCount = 0 } = {}) {
+function renderDigestHtml(articles, unsubUrl, { referralUrl = null, referralCount = 0, sponsor = null } = {}) {
   const items = articles.map((a) => `
     <tr><td style="padding:12px 0;border-bottom:1px solid #eee">
       <a href="${a.url}" style="color:#111;text-decoration:none">
@@ -62,10 +89,13 @@ function renderDigestHtml(articles, unsubUrl, { referralUrl = null, referralCoun
     </div>
   ` : "";
 
+  const sponsorHtml = sponsor?.html || "";
+
   return `
     <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto;padding:24px;color:#111">
       <div style="font-size:22px;font-weight:800;margin-bottom:4px">Scoop Daily</div>
       <div style="font-size:12px;color:#666;margin-bottom:18px">Top stories from the last 24 hours</div>
+      ${sponsorHtml}
       <table width="100%" cellpadding="0" cellspacing="0">${items}</table>
       ${referralBlock}
       <div style="margin-top:28px;font-size:12px;color:#888">
@@ -98,6 +128,9 @@ export async function sendDailyDigest() {
     return { sent: 0 };
   }
 
+  // Compute sponsor block once — same for all subscribers in this send.
+  const sponsor = getSponsorBlock();
+
   let sent = 0;
   for (const sub of subs) {
     let topics = [];
@@ -112,8 +145,9 @@ export async function sendDailyDigest() {
       await sendMail({
         to: sub.email,
         subject: `Scoop Daily — ${articles[0].title.slice(0, 60)}`,
-        html: renderDigestHtml(articles, unsubUrl, { referralUrl, referralCount }),
-        text: articles.map((a) => `• ${a.title}\n  ${a.url}`).join("\n\n") +
+        html: renderDigestHtml(articles, unsubUrl, { referralUrl, referralCount, sponsor }),
+        text: (sponsor.text || "") +
+          articles.map((a) => `• ${a.title}\n  ${a.url}`).join("\n\n") +
           `\n\n──\nInvite friends: ${referralUrl}`,
       });
       db.prepare(`UPDATE subscribers SET last_sent_at = ? WHERE id = ?`).run(Date.now(), sub.id);
