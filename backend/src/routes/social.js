@@ -77,7 +77,39 @@ router.get("/auto-status", requireAdmin, (_req, res) => {
     ok: true,
     enabled: listEnabledPlatforms(),
     last24h: socialPostStats({ withinMs: 24 * 60 * 60 * 1000 }),
+    env: {
+      FACEBOOK_PAGE_ID:    Boolean(process.env.FACEBOOK_PAGE_ID),
+      FACEBOOK_PAGE_TOKEN: Boolean(process.env.FACEBOOK_PAGE_TOKEN),
+      BLUESKY_HANDLE:      Boolean(process.env.BLUESKY_HANDLE),
+      BLUESKY_APP_PASSWORD:Boolean(process.env.BLUESKY_APP_PASSWORD),
+      THREADS_USER_ID:     Boolean(process.env.THREADS_USER_ID),
+      THREADS_ACCESS_TOKEN:Boolean(process.env.THREADS_ACCESS_TOKEN),
+      LINKEDIN_PAGE_URN:   Boolean(process.env.LINKEDIN_PAGE_URN),
+      LINKEDIN_ACCESS_TOKEN:Boolean(process.env.LINKEDIN_ACCESS_TOKEN),
+      PINTEREST_ACCESS_TOKEN:Boolean(process.env.PINTEREST_ACCESS_TOKEN),
+      PINTEREST_BOARD_ID:    Boolean(process.env.PINTEREST_BOARD_ID),
+    },
+    blueskyHandle: process.env.BLUESKY_HANDLE || "",
+    facebookPageId: process.env.FACEBOOK_PAGE_ID || "",
   });
+});
+
+// GET /scoop-ops/auto-errors — recent failed social posts with error messages.
+// Used to diagnose why a platform stopped posting (token expiry, API error, etc).
+router.get("/auto-errors", requireAdmin, (_req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT article_id, platform, status, error, posted_at
+      FROM social_posts
+      WHERE status = 'failed'
+      ORDER BY posted_at DESC
+      LIMIT 20
+    `).all();
+    res.json({ count: rows.length, rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // POST /admin/auto-post?platform=bluesky&dry=1
