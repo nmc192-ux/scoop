@@ -19,6 +19,13 @@ import { logger } from "./logger.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = path.resolve(__dirname, "../..");
 const SESSION_PATH = path.join(BACKEND_ROOT, "data", "bluesky-session.json");
+const COOLDOWN_PATH = path.join(BACKEND_ROOT, "data", "bluesky-cooldown.json");
+
+// Circuit-breaker: when createSession hits 429, persist a "do not try
+// before" timestamp so subsequent cron ticks skip the call entirely. This
+// is essential because Bluesky's rate-limit window is 5 min, but if we
+// keep hitting it during the window, the limit never clears.
+const COOLDOWN_AFTER_429_MS = 10 * 60 * 1000; // 10 minutes
 
 // Lazy getters — read at call time so backend/.env loaded by server.js body is visible.
 const getPDS = () => process.env.BLUESKY_PDS_URL || "https://bsky.social";
@@ -105,19 +112,60 @@ async function _refreshSession(prev) {
   }
 }
 
+function _readCooldown() {
+  try {
+    if (!existsSync(COOLDOWN_PATH)) return 0;
+    const raw = JSON.parse(readFileSync(COOLDOWN_PATH, "utf8"));
+    return typeof raw?.until === "number" ? raw.until : 0;
+  } catch { return 0; }
+}
+
+function _writeCooldown(untilMs) {
+  try {
+    const dir = path.dirname(COOLDOWN_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(COOLDOWN_PATH, JSON.stringify({ until: untilMs, setAt: Date.now() }));
+  } catch (e) {
+    logger.warn(`blueskyClient: failed to persist cooldown: ${e.message}`);
+  }
+}
+
 async function _createSession() {
-  const out = await call("com.atproto.server.createSession", {
-    body: { identifier: getHandle(), password: getAppPassword() },
-  });
-  const next = {
-    did:        out.did,
-    accessJwt:  out.accessJwt,
-    refreshJwt: out.refreshJwt,
-    handle:     getHandle(),
-    createdAt:  Date.now(),
-  };
-  _persistSession(next);
-  return next;
+  // Circuit-breaker: skip if we're inside a recent 429 cooldown window.
+  const cooldownUntil = _readCooldown();
+  if (cooldownUntil && Date.now() < cooldownUntil) {
+    const secs = Math.ceil((cooldownUntil - Date.now()) / 1000);
+    const err = new Error(`bluesky createSession on cooldown (${secs}s remaining after recent 429)`);
+    err.statusCode = 429;
+    err.cooldown = true;
+    throw err;
+  }
+
+  try {
+    const out = await call("com.atproto.server.createSession", {
+      body: { identifier: getHandle(), password: getAppPassword() },
+    });
+    const next = {
+      did:        out.did,
+      accessJwt:  out.accessJwt,
+      refreshJwt: out.refreshJwt,
+      handle:     getHandle(),
+      createdAt:  Date.now(),
+    };
+    _persistSession(next);
+    // Successful login → clear any lingering cooldown.
+    if (cooldownUntil) _writeCooldown(0);
+    return next;
+  } catch (err) {
+    // Persist the cooldown so 30-min cron ticks don't keep amplifying the
+    // rate-limit window. 10 min covers Bluesky's 5-min sliding window with
+    // headroom for clock skew.
+    if (err.statusCode === 429) {
+      _writeCooldown(Date.now() + COOLDOWN_AFTER_429_MS);
+      logger.warn(`blueskyClient: createSession 429, sleeping ${COOLDOWN_AFTER_429_MS/60000}min`);
+    }
+    throw err;
+  }
 }
 
 async function ensureSession({ force = false } = {}) {

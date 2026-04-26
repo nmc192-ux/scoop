@@ -96,7 +96,7 @@ router.get("/auto-status", requireAdmin, (_req, res) => {
 
 // GET /scoop-ops/auto-errors — recent failed social posts with error messages.
 // Used to diagnose why a platform stopped posting (token expiry, API error, etc).
-router.get("/auto-errors", requireAdmin, (_req, res) => {
+router.get("/auto-errors", requireAdmin, async (_req, res) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -106,7 +106,25 @@ router.get("/auto-errors", requireAdmin, (_req, res) => {
       ORDER BY posted_at DESC
       LIMIT 20
     `).all();
-    res.json({ count: rows.length, rows });
+
+    // Bluesky cooldown state (set by blueskyClient when createSession returns 429).
+    let blueskyCooldown = null;
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const url = await import("url");
+      const here = path.dirname(url.fileURLToPath(import.meta.url));
+      const cooldownPath = path.join(here, "../../data/bluesky-cooldown.json");
+      if (fs.existsSync(cooldownPath)) {
+        const raw = JSON.parse(fs.readFileSync(cooldownPath, "utf8"));
+        const remainingMs = (raw?.until || 0) - Date.now();
+        blueskyCooldown = remainingMs > 0
+          ? { active: true, remainingSecs: Math.ceil(remainingMs / 1000), until: raw.until }
+          : { active: false, until: raw?.until || 0 };
+      }
+    } catch (e) { blueskyCooldown = { error: e.message }; }
+
+    res.json({ count: rows.length, rows, blueskyCooldown });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
