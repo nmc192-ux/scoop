@@ -8,19 +8,25 @@ import { pruneOldArticles, findArticlesForVideoQueue, enqueueVideoJob,
 import { logger } from "./logger.js";
 import { RSS_SOURCES, YOUTUBE_SOURCES } from "../config/sources.js";
 import { sendDailyDigest } from "./digest.js";
+import { runWelcomeSequenceCycle } from "./welcomeSequence.js";
 import { refreshAllEvents } from "./liveEvents.js";
 import { runBreakingNewsPush } from "./breakingNewsPusher.js";
 import { runAllPlatformsCycle, listEnabledPlatforms } from "./socialPublisher.js";
-import { isVideoConfigured, generateVideo, previewSlide } from "./videoGenerator.js";
+import { isVideoConfigured, generateVideo, generateRecapVideo, generateLiveEventVideo, previewSlide } from "./videoGenerator.js";
+import { getDb, listLiveEvents, getLiveEvent } from "../models/database.js";
 
 let isRunning    = false;
 let isVideoRun   = false;   // YouTube ingestion
 let isGenRun     = false;   // short-form video generation
+let isRecapRun   = false;   // daily recap video
+let isLiveVidRun = false;   // 6h live-event video
 let isEnrichRun  = false;
 let isEventsRun  = false;
 let lastRun      = null;
 let lastVideoRun = null;
 let lastGenRun   = null;
+let lastRecapRun = null;
+let lastLiveVidRun = null;
 let lastEnrichRun = null;
 let lastEventsRun = null;
 let nextRun      = null;
@@ -36,10 +42,28 @@ export function startScheduler() {
   cron.schedule("0 * * * *",    () => runVideoCycle());
   cron.schedule("*/15 * * * *", () => runEnrichCycle());
   cron.schedule("0 * * * *",    () => runEventsCycle());
-  // Short-form video generation — runs at 2 AM nightly if ffmpeg is configured.
-  // Generates 3 videos per batch, places them in the review queue.
-  // Auto-publish is disabled until the admin approves via /scoop-ops/videos-gen.
-  cron.schedule("0 2 * * *", () => runVideoGenCycle({ batchSize: 3 }));
+  // ─── Video generation crons (in-process) ───────────────────────────────
+  // Disabled in production because Hostinger Cloud Hosting blocks subprocess
+  // execution at the kernel level (RLIMIT_NPROC). Rendering is delegated to
+  // the GitHub Actions workflow at .github/workflows/render-videos.yml,
+  // which calls /scoop-ops/videos-gen/next-batch + /upload over HTTP.
+  //
+  // Set ENABLE_INPROCESS_VIDEO_CRON=true to re-enable these on a host that
+  // allows spawn() (any VPS, Docker, local dev, etc.).
+  const inProcessVideoEnabled = String(process.env.ENABLE_INPROCESS_VIDEO_CRON || "").toLowerCase() === "true";
+  if (inProcessVideoEnabled) {
+    cron.schedule("0 2 * * *",   () => runVideoGenCycle({ batchSize: 3 }));
+    cron.schedule("0 6 * * *",   () => runDailyRecapCycle());
+    cron.schedule("0 */6 * * *", () => runLiveEventVideoCycle());
+    logger.info("🎬 In-process video crons enabled (host supports spawn)");
+  } else {
+    logger.info("🎬 In-process video crons disabled — using GitHub Actions render worker via /scoop-ops/videos-gen/next-batch");
+  }
+  // Newsletter welcome sequence — runs hourly. Picks subscribers who are
+  // due for d1/d3 follow-up emails. No-op when SMTP isn't configured.
+  cron.schedule("17 * * * *", () => runWelcomeSequenceCycle({ maxPerStage: 50 }).catch(err =>
+    logger.warn(`welcomeSequence cron failed: ${err.message}`)
+  ));
   // Daily digest at 07:00 server time — no-op if SMTP is not configured.
   cron.schedule("0 7 * * *", async () => {
     try {
@@ -171,14 +195,98 @@ export async function runVideoGenCycle({ batchSize = 3 } = {}) {
   }
 }
 
+// ─── Daily recap video ──────────────────────────────────────────────────────
+// Renders a single ~60s vertical MP4 covering the day's top 5 stories. Output
+// lands in data/videos/daily-all-YYYY-MM-DD.mp4 for human review before being
+// posted to YouTube Shorts / TikTok / Reels.
+export async function runDailyRecapCycle() {
+  if (isRecapRun)            { logger.warn("⏸️ Recap cycle already running"); return; }
+  if (!isVideoConfigured())  return; // silent no-op without ffmpeg/fonts
+
+  isRecapRun   = true;
+  lastRecapRun = new Date().toISOString();
+  logger.info("🎞️ Daily recap cycle starting");
+
+  try {
+    // Top 5 articles from the last 24h (credibility-gated).
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const articles = getDb().prepare(`
+      SELECT id, title, description, content, category, source_name, published_at, credibility
+      FROM articles
+      WHERE published_at > ? AND credibility >= 7
+      ORDER BY credibility DESC, published_at DESC
+      LIMIT 5
+    `).all(cutoff);
+
+    if (articles.length < 3) {
+      logger.info(`🎞️ Skipping recap — only ${articles.length} eligible articles`);
+      return;
+    }
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const result = await generateRecapVideo({
+      articles,
+      label: "Top 5 today",
+      slug:  `daily-all-${dateStamp}`,
+    });
+
+    if (result?.outputPath) {
+      logger.info(`🎞️ Daily recap rendered (${result.durationSecs}s${result.hasAudio ? " w/audio" : " silent"}) → ${result.outputPath}`);
+    } else {
+      logger.warn("🎞️ Daily recap returned no output");
+    }
+  } catch (err) {
+    logger.error("❌ Daily recap cycle failed", { error: err.message });
+  } finally {
+    isRecapRun = false;
+  }
+}
+
+// ─── Live-event video cycle (every 6h) ───────────────────────────────────────
+// Picks the most recently updated active live event and renders a 60s vertical
+// MP4 from its brief + metrics. Output goes to data/videos/live-{id}-{date}.mp4
+// for human review before publishing. No-op if no event has enough brief points.
+export async function runLiveEventVideoCycle() {
+  if (isLiveVidRun)         { logger.warn("⏸️ Live-event video cycle already running"); return; }
+  if (!isVideoConfigured()) return; // silent no-op without ffmpeg/fonts
+
+  isLiveVidRun   = true;
+  lastLiveVidRun = new Date().toISOString();
+  logger.info("📺 Live-event video cycle starting");
+
+  try {
+    const list = listLiveEvents().filter(e => e.status === "active" || e.status == null);
+    if (!list.length) { logger.info("📺 No active live events — skipping"); return; }
+
+    // listLiveEvents returns ordered by updated_at DESC, so [0] is freshest.
+    const eventId = list[0].id;
+    const event   = getLiveEvent(eventId);
+    if (!event || !Array.isArray(event.brief) || event.brief.length < 2) {
+      logger.info(`📺 Event '${eventId}' has only ${event?.brief?.length || 0} brief points — skipping`);
+      return;
+    }
+
+    const result = await generateLiveEventVideo(event);
+    if (result?.outputPath) {
+      logger.info(`📺 Live-event video rendered (${result.durationSecs}s${result.hasAudio ? " w/audio" : " silent"}) → ${result.outputPath}`);
+    } else {
+      logger.warn("📺 Live-event video returned no output");
+    }
+  } catch (err) {
+    logger.error("❌ Live-event video cycle failed", { error: err.message });
+  } finally {
+    isLiveVidRun = false;
+  }
+}
+
 function updateNextRun() {
   nextRun = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 }
 
 export function getSchedulerStatus() {
   return {
-    isRunning, isVideoRun, isGenRun, isEnrichRun, isEventsRun,
-    lastRun, lastVideoRun, lastGenRun, lastEnrichRun, lastEventsRun, nextRun,
+    isRunning, isVideoRun, isGenRun, isRecapRun, isLiveVidRun, isEnrichRun, isEventsRun,
+    lastRun, lastVideoRun, lastGenRun, lastRecapRun, lastLiveVidRun, lastEnrichRun, lastEventsRun, nextRun,
     sourceCount: RSS_SOURCES.length, videoChannels: YOUTUBE_SOURCES.length,
     videoGenConfigured: isVideoConfigured(),
   };

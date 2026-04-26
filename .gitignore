@@ -6,24 +6,16 @@ backend/node_modules/
 # Build output
 frontend/dist/
 
-# SQLite database (regenerated on startup)
-backend/data/*.db
-backend/data/*.db-shm
-backend/data/*.db-wal
+# Runtime data — SQLite DB, generated cards, rendered videos/audio,
+# persisted social tokens. Everything in backend/data/ is regenerated at
+# runtime and must never be committed (some entries also contain secrets).
+backend/data/
 
-# Generated branded cards (regenerated on demand from articles table)
-backend/data/cards/
+# Claude Code internal worktrees
+.claude/worktrees/
 
-# VAPID private key — auto-generated on first boot if VAPID_*_KEY env vars
-# unset; treat like any other secret and never commit.
-backend/data/vapid.json
-
-# Threads long-lived token — persisted by threadsClient.js on first boot.
-# Contains the access token + expiry; treat like a secret.
-backend/data/threads-token.json
-
-# Facebook permanent page token — persisted by facebookClient.js on first boot.
-backend/data/facebook-token.json
+# Misplaced shell-redirect artifact (Windows-style "2>NUL" on macOS).
+NUL
 
 # Logs
 *.log

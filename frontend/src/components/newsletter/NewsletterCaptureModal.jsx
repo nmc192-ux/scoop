@@ -29,6 +29,14 @@ function isDismissed() {
   } catch { return false; }
 }
 
+// Skip the modal entirely if the user already has a subscription token —
+// no point upselling a subscription to someone who already subscribed via
+// the inline NewsletterSignup or onboarding flow.
+function isAlreadySubscribed() {
+  try { return Boolean(localStorage.getItem("scoop_sub_token")); }
+  catch { return false; }
+}
+
 function markDismissed() {
   try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch {}
 }
@@ -39,7 +47,7 @@ export default function NewsletterCaptureModal() {
   const mountedAtRef = useRef(Date.now());
 
   useEffect(() => {
-    if (isDismissed()) return;
+    if (isDismissed() || isAlreadySubscribed()) return;
 
     const show = (reason) => {
       if (shownRef.current) return;

@@ -329,6 +329,10 @@ function initializeSchema(db) {
       db.exec("ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'");
       logger.info("Migrated users table: +tier");
     }
+    if (cols.length && !cols.some((c) => c.name === "stripe_customer_id")) {
+      db.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT");
+      logger.info("Migrated users table: +stripe_customer_id");
+    }
   } catch (err) {
     logger.warn("Migration check (users.tier) failed", { error: err.message });
   }
@@ -340,6 +344,16 @@ function initializeSchema(db) {
     if (!names.has("referred_by_token")) {
       db.exec("ALTER TABLE subscribers ADD COLUMN referred_by_token TEXT");
       logger.info("Migrated subscribers table: +referred_by_token");
+    }
+    // Welcome-sequence tracking — added in Phase 4 to support day-1 + day-3
+    // touchpoint emails after the day-0 confirmation.
+    if (!names.has("welcome_d1_sent_at")) {
+      db.exec("ALTER TABLE subscribers ADD COLUMN welcome_d1_sent_at INTEGER");
+      logger.info("Migrated subscribers table: +welcome_d1_sent_at");
+    }
+    if (!names.has("welcome_d3_sent_at")) {
+      db.exec("ALTER TABLE subscribers ADD COLUMN welcome_d3_sent_at INTEGER");
+      logger.info("Migrated subscribers table: +welcome_d3_sent_at");
     }
   } catch (err) {
     logger.warn("Migration check (subscribers) failed", { error: err.message });
@@ -892,6 +906,35 @@ export function socialPostStats({ withinMs = 24 * 60 * 60 * 1000 } = {}) {
 // ─── Referral helpers ────────────────────────────────────────────────────────
 
 // How many verified, non-unsubscribed subscribers did token refer?
+// ─── Welcome sequence helpers ──────────────────────────────────────────────
+// Find verified subscribers who are due for a stage of the welcome sequence
+// (day-1 expectations email, day-3 topic-prefs nudge). Filters out unsubscribed
+// users and those who already received the email at this stage.
+export function findWelcomeRecipients(stage, { ageMin, ageMax = Infinity, limit = 50 } = {}) {
+  if (!["d1", "d3"].includes(stage)) throw new Error(`unknown welcome stage: ${stage}`);
+  const col = stage === "d1" ? "welcome_d1_sent_at" : "welcome_d3_sent_at";
+  const cutoffMin = Date.now() - ageMin;
+  const cutoffMax = Number.isFinite(ageMax) ? Date.now() - ageMax : 0;
+  return getDb().prepare(`
+    SELECT id, email, token, language, topics
+    FROM subscribers
+    WHERE verified_at IS NOT NULL
+      AND unsubscribed_at IS NULL
+      AND verified_at <= ?
+      AND verified_at >= ?
+      AND ${col} IS NULL
+    ORDER BY verified_at ASC
+    LIMIT ?
+  `).all(cutoffMin, cutoffMax, limit);
+}
+
+// Mark a welcome-stage email as sent (idempotent — safe to call multiple times).
+export function markWelcomeSent(subscriberId, stage) {
+  if (!["d1", "d3"].includes(stage)) throw new Error(`unknown welcome stage: ${stage}`);
+  const col = stage === "d1" ? "welcome_d1_sent_at" : "welcome_d3_sent_at";
+  getDb().prepare(`UPDATE subscribers SET ${col} = ? WHERE id = ?`).run(Date.now(), subscriberId);
+}
+
 export function getReferralCount(referrerToken) {
   const row = getDb().prepare(`
     SELECT COUNT(*) AS n FROM subscribers
@@ -1166,6 +1209,14 @@ export function getMeterCount(deviceKey) {
 
 export function upgradeTier(userId, tier = "premium") {
   getDb().prepare(`UPDATE users SET tier = ? WHERE id = ?`).run(tier, userId);
+}
+
+export function setStripeCustomer(userId, stripeCustomerId) {
+  getDb().prepare(`UPDATE users SET stripe_customer_id = ? WHERE id = ?`).run(stripeCustomerId, userId);
+}
+
+export function getUserByStripeCustomer(stripeCustomerId) {
+  return getDb().prepare(`SELECT * FROM users WHERE stripe_customer_id = ?`).get(stripeCustomerId) || null;
 }
 
 // ─── Video job queue helpers ─────────────────────────────────────────────────

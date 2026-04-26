@@ -10,16 +10,17 @@
  * where `auth` is the object returned by `useAuth()`.
  */
 import { useState } from "react";
-import { X, Mail, Check, Loader2, LogOut, User, BookmarkCheck } from "lucide-react";
+import { X, Mail, Check, Loader2, LogOut, User, BookmarkCheck, Star } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { readSubToken } from "../newsletter/NewsletterSignup";
 
 export default function AuthModal({ open, onClose }) {
   const auth = useAuth();
-  const [email, setEmail]   = useState("");
-  const [sent, setSent]     = useState(false);
-  const [busy, setBusy]     = useState(false);
-  const [err, setErr]       = useState("");
+  const [email, setEmail]       = useState("");
+  const [sent, setSent]         = useState(false);
+  const [busy, setBusy]         = useState(false);
+  const [err, setErr]           = useState("");
+  const [upgrading, setUpgrading] = useState(false);
 
   const subToken = readSubToken();
   const referralUrl = subToken ? `https://scoopfeeds.com/?ref=${subToken}` : null;
@@ -43,6 +44,32 @@ export default function AuthModal({ open, onClose }) {
   const handleLogout = async () => {
     await auth.logout();
     onClose();
+  };
+
+  const handleUpgrade = async () => {
+    if (upgrading) return;
+    setUpgrading(true);
+    try {
+      const res = await fetch("/api/tips/subscribe", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.alreadyPremium) {
+        // Already premium — nothing to do; modal will show premium badge on next hydration.
+        window.location.reload();
+        return;
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setErr(data.error || "Could not start upgrade. Try again.");
+      }
+    } catch {
+      setErr("Network error. Please try again.");
+    } finally {
+      setUpgrading(false);
+    }
   };
 
   return (
@@ -84,12 +111,36 @@ export default function AuthModal({ open, onClose }) {
               </p>
             </div>
 
+            {/* Premium upgrade / status */}
+            {auth.isPremium ? (
+              <div className="rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-900/10 p-3 mb-4 flex items-center gap-2">
+                <Star size={14} className="text-amber-500 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Premium — Ad-free</p>
+                  <p className="text-[11px] text-[var(--color-text-tertiary)]">Thank you for supporting Scoop!</p>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={handleUpgrade}
+                disabled={upgrading}
+                className="w-full mb-4 flex items-center justify-center gap-2 py-2.5 rounded-xl
+                           bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold
+                           hover:opacity-90 disabled:opacity-60 transition-opacity"
+              >
+                {upgrading ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />}
+                Go Premium — Ad-free · $5/mo
+              </button>
+            )}
+
             {referralUrl && (
               <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface2)] p-3 mb-4">
                 <p className="text-xs font-semibold mb-1">Your invite link</p>
                 <p className="text-[11px] text-brand-blue break-all">{referralUrl}</p>
               </div>
             )}
+
+            {err && <p className="text-[11px] text-red-500 mb-3">{err}</p>}
 
             <button
               onClick={handleLogout}

@@ -27,6 +27,7 @@ import pushRouter        from "./src/routes/push.js";
 import authRouter        from "./src/routes/auth.js";
 import tipsRouter        from "./src/routes/tips.js";
 import videoGenRouter    from "./src/routes/videos-gen.js";
+import newsletterOpsRouter from "./src/routes/newsletter-ops.js";
 import meterRouter       from "./src/routes/meter.js";
 import { detectCountry } from "./src/services/geolocation.js";
 import { skimlinksPublisherId, amazonInfoForCountry } from "./src/config/affiliates.js";
@@ -145,6 +146,7 @@ app.use("/api/tips",        tipsRouter);       // Stripe tip jar: /create-sessio
 app.use("/api/meter",       meterRouter);      // metered paywall: /open (gate check + record), /status
 app.use("/scoop-ops",       socialRouter);     // /scoop-ops/social-queue — preview auto-generated social captions (renamed from /admin to bypass host WAF)
 app.use("/scoop-ops/videos-gen", videoGenRouter); // video generation queue: /queue, /run, /approve/:id, /reject/:id
+app.use("/scoop-ops/newsletter", newsletterOpsRouter); // newsletter ops: /status, /welcome/run, /welcome/test
 
 // Health
 app.get("/api/health", (req, res) => {
@@ -194,10 +196,23 @@ app.get("/api/public-config", (req, res) => {
     stripe: {
       configured: isStripeConfigured(),
       publishableKey: process.env.STRIPE_PUBLISHABLE_KEY?.trim() || "",
+      premiumPriceUsd: 5,
     },
     meter: {
       enabled: String(process.env.METER_ENABLED ?? "true").toLowerCase() !== "false",
       freeLimit: parseInt(process.env.METER_FREE_LIMIT || "10", 10),
+    },
+    // ─── Native in-feed sponsor slot (Phase 4) ─────────────────────────
+    // When SITE_SPONSOR_NAME is set, the frontend renders a "Presented by"
+    // card in the news grid (position 3). Empty values = slot hidden,
+    // so unsold inventory doesn't render an awkward placeholder.
+    sponsor: {
+      enabled: Boolean(process.env.SITE_SPONSOR_NAME?.trim()),
+      name:    process.env.SITE_SPONSOR_NAME?.trim()    || "",
+      tagline: process.env.SITE_SPONSOR_TAGLINE?.trim() || "",
+      url:     process.env.SITE_SPONSOR_URL?.trim()     || "",
+      cta:     process.env.SITE_SPONSOR_CTA?.trim()     || "Learn more",
+      imageUrl: process.env.SITE_SPONSOR_IMAGE?.trim()  || "",
     },
   });
 });

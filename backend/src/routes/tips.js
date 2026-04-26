@@ -21,7 +21,10 @@
  */
 
 import { Router } from "express";
-import { createTipRecord, completeTip, getTipStats } from "../models/database.js";
+import {
+  createTipRecord, completeTip, getTipStats,
+  getUserBySession, upgradeTier, setStripeCustomer, getUserByStripeCustomer,
+} from "../models/database.js";
 import { logger } from "../services/logger.js";
 
 const router = Router();
@@ -100,6 +103,61 @@ router.post("/create-session", async (req, res) => {
   }
 });
 
+// ─── POST /api/tips/subscribe ────────────────────────────────────────────────
+// Creates a Stripe Checkout session in subscription mode ($5/mo).
+// Requires the user to be signed in (reads scoop_session cookie).
+router.post("/subscribe", async (req, res) => {
+  if (!isStripeConfigured()) {
+    return res.status(503).json({ success: false, error: "Stripe not configured" });
+  }
+
+  // Resolve user from session cookie (same pattern as auth.js / news.js).
+  const raw = req.headers.cookie || "";
+  const match = raw.match(/(?:^|;\s*)scoop_session=([^;]+)/);
+  const sessionToken = match ? decodeURIComponent(match[1]) : null;
+  const user = sessionToken ? getUserBySession(sessionToken) : null;
+
+  if (!user) {
+    return res.status(401).json({ success: false, error: "Sign in first to upgrade to premium" });
+  }
+  if (user.tier === "premium") {
+    return res.json({ success: true, alreadyPremium: true });
+  }
+
+  const stripe = await getStripe();
+  if (!stripe) return res.status(503).json({ success: false, error: "Stripe unavailable" });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: 500, // $5.00 / month
+            recurring: { interval: "month" },
+            product_data: {
+              name: "Scoop Premium ⭐",
+              description: "Ad-free reading, unlimited article saves, and early breaking-news push alerts.",
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      // Carry the user ID so the webhook can upgrade the tier immediately.
+      client_reference_id: user.id,
+      success_url: `${SITE_URL}/?payment=success`,
+      cancel_url:  `${SITE_URL}/`,
+    });
+
+    res.json({ success: true, url: session.url });
+  } catch (err) {
+    logger.error(`tips: subscribe session failed: ${err.message}`);
+    res.status(500).json({ success: false, error: "Failed to create subscription session" });
+  }
+});
+
 // ─── POST /api/tips/webhook ──────────────────────────────────────────────────
 // IMPORTANT: must receive raw body — express.json() must be skipped for this route.
 // Registered in server.js BEFORE the express.json() middleware using express.raw().
@@ -136,11 +194,36 @@ router.post(
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      completeTip(session.id, {
-        stripePaymentIntent: session.payment_intent,
-        email: session.customer_details?.email || null,
-      });
-      logger.info(`💰 Tip completed: ${session.id} $${(session.amount_total || 0) / 100}`);
+      if (session.mode === "subscription") {
+        // Premium subscription created via Checkout.
+        const userId         = session.client_reference_id;
+        const stripeCustomerId = session.customer;
+        if (userId) {
+          upgradeTier(userId, "premium");
+          if (stripeCustomerId) setStripeCustomer(userId, stripeCustomerId);
+          logger.info(`⭐ Premium activated: user ${userId}`);
+        }
+      } else {
+        // One-time tip payment.
+        completeTip(session.id, {
+          stripePaymentIntent: session.payment_intent,
+          email: session.customer_details?.email || null,
+        });
+        logger.info(`💰 Tip completed: ${session.id} $${(session.amount_total || 0) / 100}`);
+      }
+    }
+
+    // Subscription cancelled / expired — downgrade back to free.
+    if (event.type === "customer.subscription.deleted") {
+      const sub = event.data.object;
+      const stripeCustomerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
+      if (stripeCustomerId) {
+        const user = getUserByStripeCustomer(stripeCustomerId);
+        if (user) {
+          upgradeTier(user.id, "free");
+          logger.info(`📉 Premium cancelled: user ${user.id}`);
+        }
+      }
     }
 
     res.json({ received: true });

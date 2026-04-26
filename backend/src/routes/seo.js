@@ -20,6 +20,13 @@ const CATEGORIES = [
   "self-help", "sports", "cars", "ai",
 ];
 
+// Categories that have an editorial hub at /topic/:slug. Used by the article
+// SSR page to render an internal "Browse all {category} coverage →" link
+// when a hub exists. Keep in sync with TOPIC_HUBS below.
+const TOPIC_HUB_SLUGS = new Set([
+  "ai", "cars", "science", "politics", "pakistan", "international", "health", "sports",
+]);
+
 function xmlEscape(s = "") {
   return String(s)
     .replace(/&/g, "&amp;")
@@ -62,6 +69,10 @@ router.get("/sitemap.xml", (_req, res) => {
   // E-E-A-T pages — required for Google News / Discover eligibility.
   for (const slug of ["about", "editorial-policy", "corrections", "contact", "privacy"]) {
     urls.push(`<url><loc>${SITE}/${slug}</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>`);
+  }
+  // Editorial topic hubs — evergreen aggregation pages (Phase 4 SEO scaling).
+  for (const slug of ["ai", "cars", "science", "politics", "pakistan", "international", "health", "sports"]) {
+    urls.push(`<url><loc>${SITE}/topic/${slug}</loc><changefreq>daily</changefreq><priority>0.7</priority></url>`);
   }
   for (const r of rows) {
     const lastmod = new Date(r.published_at).toISOString();
@@ -352,6 +363,8 @@ router.get("/article/:id", (req, res) => {
                 <div class="rc-title">${xmlEscape(r.title)}</div>
               </a>`).join("")}
           </div>
+          ${TOPIC_HUB_SLUGS.has(article.category) ? `
+          <p style="margin:14px 0 0;font-size:14px"><a href="/topic/${xmlEscape(article.category)}" style="color:#DC2626;font-weight:600;text-decoration:none">Browse all ${xmlEscape(article.category)} coverage →</a></p>` : ""}
         </section>` : ""}
 
         <div class="eeat-foot">
@@ -364,6 +377,270 @@ router.get("/article/:id", (req, res) => {
 </body>
 </html>`);
 });
+
+// ── Editorial topic hubs ──────────────────────────────────────────────────
+// SSR'd evergreen pages at /topic/:slug. Owns category-level rankings on
+// Google ("AI news", "Pakistan news") with substantive editorial framing,
+// the day's top stories, and the month's archive. CollectionPage JSON-LD
+// gives Google a structured signal that this is a topical hub, not thin SEO.
+const TOPIC_HUBS = {
+  ai: {
+    title: "AI News",
+    intro:
+      "Artificial intelligence is reshaping work, research, and creative tools faster than any single newsroom can cover. Scoop's AI hub aggregates the most credible reporting from across the industry — model releases, policy shifts, breakthrough research, and the business decisions behind them — synthesized in plain English so you can track what actually changed.",
+    why: "If you build, invest in, or use AI tools, the decisions made this week shape what's possible next quarter.",
+  },
+  cars: {
+    title: "Cars & Auto News",
+    intro:
+      "EVs, regulations, and supply-chain shifts are remaking the auto industry on a monthly cadence. Scoop's cars hub tracks new model launches, battery technology, autonomous-driving milestones, and the policy decisions that move the entire market — pulled from automotive trade press, mainstream news, and investor reporting.",
+    why: "Whether you're shopping for your next vehicle or watching the industry, the moves announced today land in showrooms within 18 months.",
+  },
+  science: {
+    title: "Science News",
+    intro:
+      "Peer-reviewed research is published faster than any reader can keep up with — and the headlines often distort the findings. Scoop's science hub surfaces the most consequential discoveries from credible journals and science-desk reporting, with cross-source comparison so you can see when something is genuinely new versus a press-release amplification.",
+    why: "Today's preprint becomes tomorrow's policy debate. Reading the science upstream of the punditry is the highest-leverage information habit you have.",
+  },
+  politics: {
+    title: "Politics News",
+    intro:
+      "Political stories are easy to read partisan-first. Scoop's politics hub aggregates reporting from across the spectrum — wire services, mainstream outlets, and accountability-focused investigative work — and presents them side-by-side so the disagreement itself becomes legible.",
+    why: "How a story is framed often matters as much as the story itself. Reading multiple sources on the same event is a small habit with outsized payoff.",
+  },
+  pakistan: {
+    title: "Pakistan News",
+    intro:
+      "Scoop's Pakistan hub follows the country's domestic politics, economy, security situation, and culture through a curation of local newsroom reporting alongside international coverage — so you get both the on-the-ground perspective and how the rest of the world is reading the same events.",
+    why: "Pakistan is a country of 240 million in a region whose decisions ripple globally. Local context plus international framing is the only way to read it accurately.",
+  },
+  international: {
+    title: "International News",
+    intro:
+      "Foreign news in the US/UK press is filtered through a narrow editorial lens. Scoop's international hub broadens the aperture — drawing on European, Asian, Middle Eastern, and African desks alongside the wires — so global stories arrive with the regional context their domestic readers see.",
+    why: "Most globally important stories are under-covered in any single national press. Reading across borders is how you catch them early.",
+  },
+  health: {
+    title: "Health News",
+    intro:
+      "Health reporting is high-stakes and easy to get wrong: a strong-sounding study replicates badly, a panicked headline overstates the danger, and useful behavior change is buried. Scoop's health hub leans toward primary-source reporting and longitudinal coverage, so you can see how a story evolves rather than just its first viral take.",
+    why: "Health decisions you make on a Wednesday compound for decades. Reading carefully is worth the extra two minutes.",
+  },
+  sports: {
+    title: "Sports News",
+    intro:
+      "Scores, trades, injuries, and the off-field stories that actually move a season — Scoop's sports hub aggregates wire reports, beat writers, and the longer-form analysis that puts daily news in context. Football, cricket, basketball, motorsport: surfaces from the publications closest to each league.",
+    why: "Sports moves on a daily news cycle but careers and championships are decided on a weekly arc. Read both.",
+  },
+};
+
+// Build the slug → category mapping. The slugs match category names today,
+// but keeping a dedicated map lets us add multi-slug aliases later (e.g.
+// "/topic/artificial-intelligence" → category "ai").
+const TOPIC_SLUG_TO_CATEGORY = {
+  ai: "ai", cars: "cars", science: "science", politics: "politics",
+  pakistan: "pakistan", international: "international", health: "health",
+  sports: "sports",
+};
+
+router.get("/topic/:slug", (req, res) => {
+  const slug = String(req.params.slug || "").toLowerCase();
+  const meta = TOPIC_HUBS[slug];
+  const category = TOPIC_SLUG_TO_CATEGORY[slug];
+  if (!meta || !category) return res.status(404).send(renderNotFound());
+
+  const db = getDb();
+  // Last 30 days, credibility-gated, recency-ordered.
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const articles = db.prepare(`
+    SELECT id, title, description, image_url, source_name, published_at, credibility
+    FROM articles
+    WHERE category = ? AND credibility >= 6 AND published_at > ?
+    ORDER BY published_at DESC
+    LIMIT 30
+  `).all(category, cutoff);
+
+  const canonical = `${SITE}/topic/${slug}`;
+  const pageTitle = `${meta.title} — Latest Stories from Trusted Sources | Scoop`;
+  const desc = meta.intro.slice(0, 300);
+  const ogCard = `${SITE}/api/cards/og/topic-${slug}.png`;
+
+  // CollectionPage JSON-LD — tells Google this is a topical aggregation hub
+  // (not thin content) and gives it the article list structure to surface
+  // in topic-cluster results.
+  const jsonld = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": meta.title,
+    "description": desc,
+    "url": canonical,
+    "isPartOf": { "@type": "WebSite", "name": "Scoop", "url": SITE },
+    "mainEntity": {
+      "@type": "ItemList",
+      "numberOfItems": articles.length,
+      "itemListElement": articles.slice(0, 20).map((a, idx) => ({
+        "@type": "ListItem",
+        "position": idx + 1,
+        "url": `${SITE}/article/${encodeURIComponent(a.id)}`,
+        "name": a.title,
+      })),
+    },
+  };
+
+  const todayCutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const todayArticles  = articles.filter(a => a.published_at >= todayCutoff);
+  const recentArticles = articles.filter(a => a.published_at <  todayCutoff);
+
+  const renderCard = (a) => {
+    const url = `${SITE}/article/${encodeURIComponent(a.id)}`;
+    const ts  = new Date(a.published_at).toISOString();
+    const ago = humanAgo(a.published_at);
+    return `
+      <article class="hub-card">
+        ${a.image_url ? `<a href="${url}" class="hub-card-img"><img src="${xmlEscape(a.image_url)}" alt="" loading="lazy" onerror="this.style.display='none'"></a>` : ""}
+        <div class="hub-card-body">
+          <a href="${url}"><h3>${xmlEscape(a.title)}</h3></a>
+          ${a.description ? `<p>${xmlEscape(a.description.slice(0, 160))}${a.description.length > 160 ? "…" : ""}</p>` : ""}
+          <div class="hub-card-meta">
+            <span>${xmlEscape(a.source_name || "")}</span>
+            <span>·</span>
+            <time datetime="${ts}">${ago}</time>
+          </div>
+        </div>
+      </article>`;
+  };
+
+  const todaySection = todayArticles.length > 0 ? `
+    <section>
+      <h2>Today in ${xmlEscape(meta.title.replace(" News", ""))}</h2>
+      <div class="hub-grid">
+        ${todayArticles.map(renderCard).join("")}
+      </div>
+    </section>` : "";
+
+  const recentSection = recentArticles.length > 0 ? `
+    <section>
+      <h2>This month</h2>
+      <div class="hub-grid">
+        ${recentArticles.map(renderCard).join("")}
+      </div>
+    </section>` : "";
+
+  const emptyMessage = articles.length === 0 ? `
+    <div class="hub-empty">
+      <p>No recent ${xmlEscape(meta.title.toLowerCase())} stories yet — check back soon, or browse <a href="/">all of today's news</a>.</p>
+    </div>` : "";
+
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${xmlEscape(pageTitle)}</title>
+<meta name="description" content="${xmlEscape(desc)}">
+<link rel="canonical" href="${canonical}">
+<link rel="alternate" hreflang="en" href="${canonical}">
+<link rel="alternate" hreflang="x-default" href="${canonical}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${xmlEscape(pageTitle)}">
+<meta property="og:description" content="${xmlEscape(desc)}">
+<meta property="og:image" content="${xmlEscape(ogCard)}">
+<meta property="og:url" content="${canonical}">
+<meta property="og:site_name" content="Scoop">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${xmlEscape(pageTitle)}">
+<meta name="twitter:description" content="${xmlEscape(desc)}">
+<meta name="twitter:image" content="${xmlEscape(ogCard)}">
+${articles.length === 0 ? `<meta name="robots" content="noindex,follow">` : ""}
+<script type="application/ld+json">${JSON.stringify(jsonld)}</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-E7CDBSB5KY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-E7CDBSB5KY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6168047656143190" crossorigin="anonymous"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 0; background: #fafafa; color: #111; line-height: 1.6; }
+  @media (prefers-color-scheme: dark) { body { background: #0a0a0a; color: #eee; } .hub-card { background: #151515 !important; border-color: #222 !important; } a { color: #4aa3ff; } .topic-intro { background: #151515 !important; border-color: #222 !important; } }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
+  .back { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; text-decoration: none; color: #666; margin-bottom: 18px; }
+  .back:hover { color: #DC2626; }
+  .brand { font-weight: 700; color: #DC2626; }
+  h1 { font-size: 36px; line-height: 1.15; margin: 6px 0 16px; font-weight: 800; letter-spacing: -0.02em; }
+  h2 { font-size: 22px; margin: 36px 0 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .topic-intro { background: #fff; border: 1px solid #e5e5e5; border-radius: 14px; padding: 18px 22px; margin-bottom: 24px; }
+  .topic-intro p { margin: 0 0 10px; font-size: 16px; }
+  .topic-intro .why { font-size: 14px; color: #555; font-style: italic; margin-bottom: 0; }
+  @media (prefers-color-scheme: dark) { .topic-intro .why { color: #aaa; } }
+  .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .hub-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.15s, box-shadow 0.15s; }
+  .hub-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+  .hub-card-img { display: block; aspect-ratio: 16/9; overflow: hidden; background: #eee; }
+  .hub-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hub-card-body { padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column; }
+  .hub-card-body a { text-decoration: none; color: inherit; }
+  .hub-card-body h3 { font-size: 16px; line-height: 1.35; margin: 0 0 8px; font-weight: 700; }
+  .hub-card-body h3:hover { color: #DC2626; }
+  .hub-card-body p { font-size: 13px; color: #555; margin: 0 0 12px; line-height: 1.5; }
+  @media (prefers-color-scheme: dark) { .hub-card-body p { color: #aaa; } }
+  .hub-card-meta { font-size: 12px; color: #888; margin-top: auto; display: flex; gap: 6px; align-items: center; }
+  .hub-empty { padding: 40px 20px; text-align: center; color: #666; background: #fff; border-radius: 14px; border: 1px solid #e5e5e5; }
+  @media (prefers-color-scheme: dark) { .hub-empty { background: #151515; border-color: #222; color: #aaa; } }
+  .other-topics { margin: 40px 0 0; padding-top: 24px; border-top: 1px solid #e5e5e5; }
+  @media (prefers-color-scheme: dark) { .other-topics { border-top-color: #222; } }
+  .other-topics h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin: 0 0 12px; font-weight: 600; }
+  .other-topics ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .other-topics li a { display: inline-block; padding: 7px 14px; background: #fff; border: 1px solid #e5e5e5; border-radius: 999px; font-size: 14px; text-decoration: none; color: #333; }
+  .other-topics li a:hover { border-color: #DC2626; color: #DC2626; }
+  @media (prefers-color-scheme: dark) { .other-topics li a { background: #151515; border-color: #222; color: #ddd; } }
+  footer { margin: 48px 0 0; padding-top: 20px; border-top: 1px solid #e5e5e5; font-size: 13px; color: #888; }
+  @media (prefers-color-scheme: dark) { footer { border-top-color: #222; } }
+  footer a { color: #888; margin-right: 14px; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/">← <span class="brand">Scoop</span> — News, sniffed out.</a>
+    <h1>${xmlEscape(meta.title)}</h1>
+    <div class="topic-intro">
+      <p>${xmlEscape(meta.intro)}</p>
+      <p class="why">${xmlEscape(meta.why)}</p>
+    </div>
+    ${emptyMessage}
+    ${todaySection}
+    ${recentSection}
+
+    <nav class="other-topics" aria-label="Other topics">
+      <h3>Browse other topics</h3>
+      <ul>
+        ${Object.entries(TOPIC_HUBS)
+          .filter(([s]) => s !== slug)
+          .map(([s, m]) => `<li><a href="/topic/${s}">${xmlEscape(m.title.replace(" News", ""))}</a></li>`)
+          .join("")}
+      </ul>
+    </nav>
+
+    <footer>
+      <a href="/about">About</a>
+      <a href="/editorial-policy">Editorial policy</a>
+      <a href="/corrections">Corrections</a>
+      <a href="/contact">Contact</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/sponsor">Advertise</a>
+    </footer>
+  </div>
+</body>
+</html>`);
+});
+
+// Compact relative-time formatter for topic hub cards.
+function humanAgo(ts) {
+  const diff = Date.now() - ts;
+  const m = Math.round(diff / 60000);
+  if (m < 60)  return `${m}m ago`;
+  const h = Math.round(diff / 3600000);
+  if (h < 24)  return `${h}h ago`;
+  const d = Math.round(diff / 86400000);
+  return `${d}d ago`;
+}
 
 // Extract up to 3 "key takeaway" bullets from the article. Uses a cheap
 // heuristic (first sentence of first 3 paragraphs, capped at 180 chars) —

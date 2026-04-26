@@ -1,0 +1,91 @@
+name: Render video queue
+
+# Renders queued short-form videos for scoopfeeds.com on free GitHub-hosted
+# runners and uploads the resulting MP4s back to the production server.
+#
+# Why GH Actions: Hostinger Cloud Hosting (where scoopfeeds.com runs) blocks
+# subprocess execution at the kernel level, so ffmpeg can't run in-process.
+# GitHub-hosted runners are ephemeral Ubuntu containers with full spawn
+# power, and the free tier (2,000 mins/mo for private repos, unlimited for
+# public) is more than enough for our render volume.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   OPS_KEY    — value of ADMIN_KEY env var on the server
+#   SITE_URL   — optional, defaults to https://scoopfeeds.com
+#
+# Optional secrets (enable TTS narration):
+#   OPENAI_API_KEY      — preferred (cheapest at our volume)
+#   ELEVENLABS_API_KEY  — premium voice quality
+#   GOOGLE_TTS_KEY      — fallback
+
+on:
+  schedule:
+    # 03:00 UTC — primary per-article batch (5 videos, post-overnight ingestion)
+    - cron: "0 3 * * *"
+    # 06:00 UTC — top-up batch in case morning ingestion brings new stories
+    - cron: "0 6 * * *"
+    # 12:00 UTC — midday batch
+    - cron: "0 12 * * *"
+  # Manual trigger from the Actions tab — useful for testing + ad-hoc runs.
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: "Number of videos to render this run (1–10)"
+        required: false
+        default: "5"
+      dry_run:
+        description: "Render but don't upload (true/false)"
+        required: false
+        default: "false"
+
+# Don't let two scheduled runs overlap — they'd both try to claim the same
+# queued jobs and one would get "rendering" status conflicts. Concurrency
+# group cancels in-progress runs when a new one is queued.
+concurrency:
+  group: render-videos
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Render queued videos
+    runs-on: ubuntu-latest
+    # 30-minute ceiling — a 5-video batch should complete in <5 min, but we
+    # leave headroom for occasional cold starts / flaky network to upload.
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend deps (incl. @ffmpeg-installer/ffmpeg)
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify ffmpeg + fonts ready
+        working-directory: backend
+        run: |
+          node -e 'import("./src/services/videoGenerator.js").then(m => {
+            const ok = m.isVideoConfigured();
+            console.log("isVideoConfigured:", ok);
+            console.log("ffmpegPath:", m.getFFmpegPath());
+            if (!ok) process.exit(1);
+          })'
+
+      - name: Render queued jobs
+        env:
+          SITE_URL:           ${{ secrets.SITE_URL || 'https://scoopfeeds.com' }}
+          OPS_KEY:            ${{ secrets.OPS_KEY }}
+          BATCH_SIZE:         ${{ github.event.inputs.batch_size || '5' }}
+          DRY_RUN:            ${{ github.event.inputs.dry_run || 'false' }}
+          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          GOOGLE_TTS_KEY:     ${{ secrets.GOOGLE_TTS_KEY }}
+        run: node scripts/render-queue.mjs

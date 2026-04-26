@@ -293,6 +293,18 @@ export default function App() {
             <span>·</span>
             <a href="/sponsor" className="hover:text-[var(--color-text)] transition-colors">Advertise</a>
           </div>
+          {/* Topic hubs — internal linking signal + discoverability for SSR'd /topic/:slug pages */}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-[var(--color-text-tertiary)]">
+            <span className="font-semibold text-[var(--color-text-secondary)]">Topics:</span>
+            <a href="/topic/ai"            className="hover:text-[var(--color-text)] transition-colors">AI</a>
+            <a href="/topic/politics"      className="hover:text-[var(--color-text)] transition-colors">Politics</a>
+            <a href="/topic/pakistan"      className="hover:text-[var(--color-text)] transition-colors">Pakistan</a>
+            <a href="/topic/international" className="hover:text-[var(--color-text)] transition-colors">International</a>
+            <a href="/topic/science"       className="hover:text-[var(--color-text)] transition-colors">Science</a>
+            <a href="/topic/health"        className="hover:text-[var(--color-text)] transition-colors">Health</a>
+            <a href="/topic/cars"          className="hover:text-[var(--color-text)] transition-colors">Cars</a>
+            <a href="/topic/sports"        className="hover:text-[var(--color-text)] transition-colors">Sports</a>
+          </div>
         </div>
       </footer>
 

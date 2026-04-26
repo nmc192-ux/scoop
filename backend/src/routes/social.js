@@ -12,6 +12,8 @@ import { getDb, socialPostStats } from "../models/database.js";
 import { composeAllPlatforms } from "../services/socialComposer.js";
 import { runPlatformCycle, listEnabledPlatforms, runAllPlatformsCycle } from "../services/socialPublisher.js";
 
+const SITE_URL = (process.env.PRIMARY_SITE_URL || "https://scoopfeeds.com").replace(/\/+$/, "");
+
 const router = Router();
 
 const ADMIN_KEY = process.env.ADMIN_KEY || "";
@@ -93,6 +95,190 @@ router.post("/auto-post", requireAdmin, jsonParser, async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// ── Attribution dashboard ─────────────────────────────────────────────────
+// GET /scoop-ops/attribution  — per-article stats: social posts, video job,
+//   analytics events (views/saves/shares last 7d), meter opens, credibility.
+//   Helps understand which article types/topics drive the most engagement.
+router.get("/attribution", requireAdmin, (_req, res) => {
+  const db = getDb();
+
+  // Top 60 articles from the last 7 days
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const articles = db.prepare(`
+    SELECT id, title, source_name, category, published_at, credibility, url
+    FROM articles
+    WHERE published_at > ?
+    ORDER BY credibility DESC, published_at DESC
+    LIMIT 60
+  `).all(weekAgo);
+
+  if (!articles.length) {
+    return res.type("html").send("<html><body><h2>No recent articles found.</h2></body></html>");
+  }
+
+  const ids = articles.map(a => a.id);
+  const ph  = ids.map(() => "?").join(",");
+
+  // Social posts per article
+  const socialRows = db.prepare(`
+    SELECT article_id, platform, status, url, posted_at
+    FROM social_posts WHERE article_id IN (${ph})
+    ORDER BY posted_at DESC
+  `).all(...ids);
+  const socialByArticle = {};
+  for (const r of socialRows) {
+    if (!socialByArticle[r.article_id]) socialByArticle[r.article_id] = [];
+    socialByArticle[r.article_id].push(r);
+  }
+
+  // Video jobs per article
+  const videoRows = db.prepare(`
+    SELECT article_id, id AS job_id, status, has_audio, duration_secs, output_path
+    FROM video_jobs WHERE article_id IN (${ph})
+    ORDER BY created_at DESC
+  `).all(...ids);
+  const videoByArticle = {};
+  for (const r of videoRows) {
+    if (!videoByArticle[r.article_id]) videoByArticle[r.article_id] = r;
+  }
+
+  // Analytics events per article (last 7 days)
+  const analyticsRows = db.prepare(`
+    SELECT article_id,
+      SUM(CASE WHEN event_type = 'article_view'            THEN 1 ELSE 0 END) AS views,
+      SUM(CASE WHEN event_type = 'save_article'            THEN 1 ELSE 0 END) AS saves,
+      SUM(CASE WHEN event_type = 'article_click_outbound'  THEN 1 ELSE 0 END) AS clicks,
+      SUM(CASE WHEN event_type = 'share_click'             THEN 1 ELSE 0 END) AS shares,
+      SUM(CASE WHEN event_type = 'reader_open'             THEN 1 ELSE 0 END) AS reader_opens
+    FROM analytics
+    WHERE article_id IN (${ph}) AND created_at > ?
+    GROUP BY article_id
+  `).all(...ids, weekAgo);
+  const analyticsByArticle = {};
+  for (const r of analyticsRows) analyticsByArticle[r.article_id] = r;
+
+  // Meter opens per article (last 30 days)
+  const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const meterRows = db.prepare(`
+    SELECT article_id, COUNT(*) AS opens
+    FROM meter_events WHERE article_id IN (${ph}) AND created_at > ?
+    GROUP BY article_id
+  `).all(...ids, monthAgo);
+  const meterByArticle = {};
+  for (const r of meterRows) meterByArticle[r.article_id] = r.opens;
+
+  res.type("html").send(renderAttributionPage(articles, { socialByArticle, videoByArticle, analyticsByArticle, meterByArticle }));
+});
+
+const PLATFORM_ICONS = {
+  bluesky: "🦋", threads: "🧵", facebook: "📘", linkedin: "💼",
+  pinterest: "📌", instagram: "📸", x: "✕",
+};
+
+function renderAttributionPage(articles, { socialByArticle, videoByArticle, analyticsByArticle, meterByArticle }) {
+  const now = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+  const rows = articles.map(a => {
+    const social   = socialByArticle[a.id] || [];
+    const video    = videoByArticle[a.id] || null;
+    const stats    = analyticsByArticle[a.id] || {};
+    const meterN   = meterByArticle[a.id] || 0;
+    const age      = Math.round((Date.now() - a.published_at) / 3600000);
+    const ageStr   = age < 24 ? `${age}h ago` : `${Math.round(age/24)}d ago`;
+
+    const platformCells = social.map(s =>
+      `<a href="${xmlEscape(s.url || "#")}" target="_blank" rel="noopener" title="${xmlEscape(s.platform)} · ${xmlEscape(s.status)}" style="opacity:${s.status==="posted"?1:0.4}">${PLATFORM_ICONS[s.platform] || "📢"}</a>`
+    ).join(" ");
+
+    const videoCell = video
+      ? `<span title="Job #${video.job_id}: ${video.status}${video.duration_secs ? ` · ${video.duration_secs}s` : ""}">
+           ${video.status==="published"?"🎬✓":video.status==="review_approved"?"🎬⏳":video.status==="ready"?"🎬👁️":video.status==="failed"?"🎬✗":"🎬⏳"}
+         </span>`
+      : "<span style='color:#ccc'>—</span>";
+
+    return `
+      <tr>
+        <td style="max-width:320px">
+          <a href="${xmlEscape(SITE_URL)}/article/${encodeURIComponent(a.id)}" target="_blank" rel="noopener"
+             style="font-weight:600;font-size:13px;color:inherit;text-decoration:none;display:block;line-height:1.3">
+            ${xmlEscape(a.title.slice(0, 90))}${a.title.length > 90 ? "…" : ""}
+          </a>
+          <div style="font-size:11px;color:#888;margin-top:2px">${xmlEscape(a.source_name)} · ${xmlEscape(a.category)} · ${ageStr}</div>
+        </td>
+        <td class="num">${a.credibility}</td>
+        <td class="num">${stats.views || 0}</td>
+        <td class="num">${stats.reader_opens || 0}</td>
+        <td class="num">${stats.saves || 0}</td>
+        <td class="num">${stats.clicks || 0}</td>
+        <td class="num">${stats.shares || 0}</td>
+        <td class="num">${meterN}</td>
+        <td style="font-size:16px;white-space:nowrap">${platformCells || "<span style='color:#ccc'>—</span>"}</td>
+        <td style="font-size:16px">${videoCell}</td>
+      </tr>`;
+  }).join("");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Scoop · Attribution</title>
+<style>
+  :root{color-scheme:light dark}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;margin:0;background:#f8f8fa;color:#111;font-size:13px}
+  @media(prefers-color-scheme:dark){body{background:#0b0b0d;color:#e5e5e5}table{border-color:#23232a!important}th{background:#141418!important;border-color:#23232a!important}tr:hover td{background:#141418!important}}
+  .wrap{max-width:1400px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .meta{font-size:12px;color:#888;margin-bottom:18px}
+  table{width:100%;border-collapse:collapse;border:1px solid #e5e5e8;border-radius:10px;overflow:hidden;background:#fff}
+  th{background:#f3f3f5;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;padding:8px 12px;text-align:left;border-bottom:1px solid #e5e5e8;white-space:nowrap}
+  td{padding:8px 12px;border-bottom:1px solid #f0f0f2;vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  tr:hover td{background:#fafafa}
+  .num{text-align:right;font-variant-numeric:tabular-nums;color:#555}
+  .legend{margin-top:12px;font-size:11px;color:#888;display:flex;gap:16px;flex-wrap:wrap}
+  .nav{display:flex;gap:16px;margin-bottom:20px;font-size:13px}
+  .nav a{color:#007AFF;text-decoration:none;padding:6px 14px;border:1px solid #007AFF;border-radius:20px}
+  .nav a:hover{background:#007AFF;color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Scoop · Attribution Dashboard</h1>
+  <div class="meta">Top ${articles.length} articles · last 7 days · generated ${xmlEscape(now)}</div>
+  <div class="nav">
+    <a href="social-queue">Social Queue</a>
+    <a href="attribution">Attribution ←</a>
+    <a href="videos-gen/queue">Video Queue</a>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Article</th>
+        <th>Cred</th>
+        <th>Views</th>
+        <th>Reader</th>
+        <th>Saves</th>
+        <th>Clicks</th>
+        <th>Shares</th>
+        <th>Meter</th>
+        <th>Social</th>
+        <th>Video</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="legend">
+    <span>📊 Views/Reader/Saves/Clicks/Shares = analytics events (7d)</span>
+    <span>🔢 Meter = unique article opens (30d)</span>
+    <span>🎬✓ Published · 🎬👁️ Ready for review · 🎬✗ Failed</span>
+    <span>Platform icons link to the posted URL</span>
+  </div>
+</div>
+</body>
+</html>`;
+}
 
 function xmlEscape(s = "") {
   return String(s)

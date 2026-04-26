@@ -6,9 +6,11 @@ import { useNewsStore } from "../../store/newsStore";
 import { LoadingGrid } from "../ui/LoadingCard";
 import EmptyState from "../ui/EmptyState";
 import { AdSenseUnit } from "../ads/AdSense";
+import SponsorCard from "../ads/SponsorCard";
 import { usePublicConfig } from "../../hooks/useNews";
 
-const AD_INTERVAL = 6; // show an in-feed ad after every N cards
+const AD_INTERVAL = 6;        // show an in-feed ad after every N cards
+const SPONSOR_POSITION = 3;   // inject the sponsor card after the Nth article (front-of-feed)
 
 const PAGE_SIZE = 18;
 
@@ -17,6 +19,7 @@ export default function NewsGrid({ articles = [], isLoading, error, onRefresh })
   const [page, setPage] = useState(1);
   const { data: publicConfig } = usePublicConfig();
   const adSenseConfig = publicConfig?.adsense;
+  const sponsor = publicConfig?.sponsor;
 
   // Dedup by id
   const dedupedArticles = useMemo(() => {
@@ -58,6 +61,10 @@ export default function NewsGrid({ articles = [], isLoading, error, onRefresh })
           >
             {visibleArticles.flatMap((article, i) => {
               const items = [<NewsCard key={article.id} article={article} index={i} />];
+              // Native sponsor slot — appears once, near the top of the feed.
+              if (i + 1 === SPONSOR_POSITION && sponsor?.enabled && i < visibleArticles.length - 1) {
+                items.push(<SponsorCard key="sponsor" sponsor={sponsor} />);
+              }
               if ((i + 1) % AD_INTERVAL === 0 && i < visibleArticles.length - 1) {
                 items.push(
                   <AdSenseUnit
