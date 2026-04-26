@@ -3,21 +3,58 @@
 // BLUESKY_APP_PASSWORD; password should be an "app password" (created at
 // bsky.app/settings/app-passwords), NEVER the account's main password.
 //
-// We cache the access JWT in-process. It's good for ~2 hours; on 401 we
-// refresh once and retry. No persistent token store — restart re-creates a
-// session, which is cheap.
+// Session model (must avoid 429 RateLimitExceeded on createSession):
+//   - Bluesky rate-limits createSession to ~30 per 5 min per account.
+//   - Hostinger redeploys wipe in-memory state, so we MUST persist the
+//     session to disk (data/bluesky-session.json) and prefer refreshSession
+//     over a fresh createSession when possible.
+//   - accessJwt expires ~2h, refreshJwt ~90d. Refresh is cheap and
+//     rate-limited far more leniently than createSession.
 
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { logger } from "./logger.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const BACKEND_ROOT = path.resolve(__dirname, "../..");
+const SESSION_PATH = path.join(BACKEND_ROOT, "data", "bluesky-session.json");
 
 // Lazy getters — read at call time so backend/.env loaded by server.js body is visible.
 const getPDS = () => process.env.BLUESKY_PDS_URL || "https://bsky.social";
 const getHandle = () => process.env.BLUESKY_HANDLE || "";
 const getAppPassword = () => process.env.BLUESKY_APP_PASSWORD || "";
 
-let session = null; // { did, accessJwt, refreshJwt, createdAt }
+let session = null; // { did, accessJwt, refreshJwt, createdAt, handle }
 
 export function isBlueskyConfigured() {
   return Boolean(getHandle() && getAppPassword());
+}
+
+function _loadSessionFromDisk() {
+  try {
+    if (!existsSync(SESSION_PATH)) return null;
+    const raw = JSON.parse(readFileSync(SESSION_PATH, "utf8"));
+    if (raw?.accessJwt && raw?.refreshJwt && raw?.did) {
+      // Only trust the cache if the handle matches the current env (someone
+      // may have rotated accounts since the file was written).
+      if (raw.handle && getHandle() && raw.handle !== getHandle()) return null;
+      return raw;
+    }
+  } catch (e) {
+    logger.warn(`blueskyClient: session file unreadable: ${e.message}`);
+  }
+  return null;
+}
+
+function _persistSession(s) {
+  try {
+    const dir = path.dirname(SESSION_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(SESSION_PATH, JSON.stringify(s, null, 2), { mode: 0o600 });
+  } catch (e) {
+    logger.warn(`blueskyClient: failed to persist session: ${e.message}`);
+  }
 }
 
 async function call(path, { method = "POST", body, headers = {}, blob = null } = {}) {
@@ -43,18 +80,75 @@ async function call(path, { method = "POST", body, headers = {}, blob = null } =
   return json;
 }
 
-async function ensureSession({ force = false } = {}) {
-  if (session && !force) return session;
-  if (!isBlueskyConfigured()) throw new Error("bluesky not configured");
+// Try to mint a new accessJwt from the cached refreshJwt. Cheap + lightly
+// rate-limited (vs createSession which is heavily limited). Returns the
+// updated session on success, null on failure (caller should fall back to
+// createSession but only if a fresh login is genuinely needed).
+async function _refreshSession(prev) {
+  try {
+    const out = await call("com.atproto.server.refreshSession", {
+      headers: { Authorization: `Bearer ${prev.refreshJwt}` },
+      method: "POST",
+    });
+    const next = {
+      did:        out.did || prev.did,
+      accessJwt:  out.accessJwt,
+      refreshJwt: out.refreshJwt || prev.refreshJwt,
+      handle:     getHandle(),
+      createdAt:  Date.now(),
+    };
+    _persistSession(next);
+    return next;
+  } catch (err) {
+    logger.warn(`blueskyClient: refreshSession failed (${err.message}); will need full login`);
+    return null;
+  }
+}
+
+async function _createSession() {
   const out = await call("com.atproto.server.createSession", {
     body: { identifier: getHandle(), password: getAppPassword() },
   });
-  session = {
-    did: out.did,
-    accessJwt: out.accessJwt,
+  const next = {
+    did:        out.did,
+    accessJwt:  out.accessJwt,
     refreshJwt: out.refreshJwt,
-    createdAt: Date.now(),
+    handle:     getHandle(),
+    createdAt:  Date.now(),
   };
+  _persistSession(next);
+  return next;
+}
+
+async function ensureSession({ force = false } = {}) {
+  if (session && !force) return session;
+  if (!isBlueskyConfigured()) throw new Error("bluesky not configured");
+
+  // 1. Hot in-memory cache (already returned above unless force=true).
+  // 2. Disk cache → try refreshSession first.
+  if (!session) {
+    const onDisk = _loadSessionFromDisk();
+    if (onDisk) {
+      const refreshed = await _refreshSession(onDisk);
+      if (refreshed) {
+        session = refreshed;
+        return session;
+      }
+      // Refresh failed — fall through to createSession. The on-disk session
+      // is effectively dead at this point.
+    }
+  } else if (force) {
+    // Forced refresh of an existing in-memory session — try refresh first
+    // before reaching for createSession (which costs us 1/30 per 5min).
+    const refreshed = await _refreshSession(session);
+    if (refreshed) {
+      session = refreshed;
+      return session;
+    }
+  }
+
+  // Last resort: full login.
+  session = await _createSession();
   return session;
 }
 
@@ -63,8 +157,11 @@ async function authed(path, opts = {}) {
   try {
     return await call(path, { ...opts, headers: { Authorization: `Bearer ${s.accessJwt}` } });
   } catch (err) {
-    if (err.statusCode === 401 || err.statusCode === 400) {
-      // Likely expired token — re-login and retry once.
+    // Only 401 = unambiguously expired/invalid token. 400 covers a wide
+    // range of validation errors (bad payload, etc) and shouldn't trigger
+    // a session refresh — that's how we burned through the 30/5min
+    // createSession budget and started getting RateLimitExceeded.
+    if (err.statusCode === 401) {
       const fresh = await ensureSession({ force: true });
       return await call(path, { ...opts, headers: { Authorization: `Bearer ${fresh.accessJwt}` } });
     }
