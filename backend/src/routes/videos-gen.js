@@ -39,6 +39,20 @@ import { logger } from "../services/logger.js";
 
 const router = Router();
 
+// ─── Admin guard (shared with social.js + newsletter-ops) ──────────────────
+// Same pattern as the rest of /scoop-ops: opt-in gating via ADMIN_KEY env.
+// When ADMIN_KEY is unset (dev / first boot) the routes are open. When set,
+// every request must include ?key=<value>. The 404 response (vs 401) keeps
+// the URL undiscoverable on the public web.
+const ADMIN_KEY = process.env.ADMIN_KEY || "";
+function requireAdmin(req, res, next) {
+  if (!ADMIN_KEY) return next();
+  if (req.query.key === ADMIN_KEY) return next();
+  res.status(404).type("html").send(
+    `<!doctype html><html><head><title>Not found</title></head><body><h1>404</h1></body></html>`
+  );
+}
+
 // ─── Filesystem paths (mirrored from videoGenerator.js) ─────────────────────
 const __dirname    = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = path.resolve(__dirname, "../..");
@@ -76,7 +90,7 @@ router.get("/queue", (req, res) => {
 });
 
 // ─── Manually enqueue ────────────────────────────────────────────────────────
-router.post("/enqueue", (req, res) => {
+router.post("/enqueue", requireAdmin, (req, res) => {
   const { articleId } = req.body || {};
   if (!articleId) return res.status(400).json({ error: "articleId required" });
   const article = getArticleById(articleId);
@@ -86,7 +100,7 @@ router.post("/enqueue", (req, res) => {
 });
 
 // ─── Approve / reject ─────────────────────────────────────────────────────────
-router.post("/approve/:id", (req, res) => {
+router.post("/approve/:id", requireAdmin, (req, res) => {
   const job = getVideoJobById(parseInt(req.params.id));
   if (!job) return res.status(404).json({ error: "job not found" });
   if (!["ready", "review_approved"].includes(job.status)) {
@@ -96,7 +110,7 @@ router.post("/approve/:id", (req, res) => {
   res.json({ ok: true, jobId: job.id, status: "review_approved" });
 });
 
-router.post("/reject/:id", (req, res) => {
+router.post("/reject/:id", requireAdmin, (req, res) => {
   const job = getVideoJobById(parseInt(req.params.id));
   if (!job) return res.status(404).json({ error: "job not found" });
   rejectVideoJob(job.id);
@@ -123,7 +137,7 @@ router.get("/preview/:id", async (req, res) => {
 // ─── Run batch ───────────────────────────────────────────────────────────────
 // Picks up to `batchSize` queued jobs, renders them, marks ready for review.
 // This is safe to call from a cron (idempotent, serial within request).
-router.post("/run", async (req, res) => {
+router.post("/run", requireAdmin, async (req, res) => {
   if (!isVideoConfigured()) {
     return res.json({ ok: false, reason: "ffmpeg not configured", processed: 0 });
   }
@@ -201,7 +215,7 @@ router.post("/run", async (req, res) => {
 // requested window — daily Top 5 by default, optionally filtered to a category
 // for "This week in AI / Cars / Pakistan" weekly recaps. Output lands in
 // data/videos/ and the path is returned for manual review.
-router.post("/recap", async (req, res) => {
+router.post("/recap", requireAdmin, async (req, res) => {
   if (!isVideoConfigured()) {
     return res.json({ ok: false, reason: "ffmpeg/fonts not configured" });
   }
@@ -266,7 +280,7 @@ router.post("/recap", async (req, res) => {
 // Renders a 60s vertical MP4 from a synthesized live-event dossier (4 points
 // from `brief` + a metrics tile). Output lands in data/videos/live-{eventId}-
 // {date}.mp4 and is suitable for direct upload to Shorts/TikTok/Reels.
-router.post("/live-event", async (req, res) => {
+router.post("/live-event", requireAdmin, async (req, res) => {
   if (!isVideoConfigured()) {
     return res.json({ ok: false, reason: "ffmpeg/fonts not configured" });
   }
@@ -316,7 +330,7 @@ router.post("/live-event", async (req, res) => {
 //
 // POST /scoop-ops/videos-gen/next-batch?size=5
 //   → { ok: true, jobs: [ { jobId, articleId, article: {...} }, ... ] }
-router.post("/next-batch", express.json({ limit: "8kb" }), (req, res) => {
+router.post("/next-batch", requireAdmin, express.json({ limit: "8kb" }), (req, res) => {
   const batchSize = Math.min(parseInt(req.query.size || req.body?.size || "3", 10), 10);
 
   // 1. Look at currently queued jobs.
@@ -374,7 +388,7 @@ router.post("/next-batch", express.json({ limit: "8kb" }), (req, res) => {
 // POST /scoop-ops/videos-gen/upload?jobId=N&durationSecs=37&hasAudio=false
 //   Content-Type: video/mp4   (or application/octet-stream)
 //   Body: <raw MP4 bytes, max 50 MB>
-router.post("/upload", mp4Parser, (req, res) => {
+router.post("/upload", requireAdmin, mp4Parser, (req, res) => {
   const jobId = parseInt(req.query.jobId, 10);
   if (!jobId) return res.status(400).json({ ok: false, error: "jobId query param required" });
 
@@ -423,7 +437,7 @@ router.post("/upload", mp4Parser, (req, res) => {
 //   Body: { reason?: string }
 // Used by the GH Actions worker when a render fails — moves the job out of
 // the 'rendering' state so it doesn't block subsequent batch picks.
-router.post("/mark-failed", express.json({ limit: "8kb" }), (req, res) => {
+router.post("/mark-failed", requireAdmin, express.json({ limit: "8kb" }), (req, res) => {
   const jobId = parseInt(req.query.jobId || req.body?.jobId, 10);
   if (!jobId) return res.status(400).json({ ok: false, error: "jobId required" });
   const job = getVideoJobById(jobId);
