@@ -132,20 +132,128 @@ export function isVideoConfigured() {
 }
 
 // ─── Bullet extraction ───────────────────────────────────────────────────────
+// Pulls 3 punchy sentences from the article body for the key-point slides.
+// The naive "first 3 sentences" approach we shipped initially picked up too
+// much boilerplate (datelines, "Read more →", attribution-only sentences),
+// so this version scores sentences and picks the top 3 distinct ones.
+const BOILERPLATE_PATTERNS = [
+  /^read more/i,
+  /^subscribe/i,
+  /^follow (us|me)/i,
+  /^click (here|to)/i,
+  /^sign up/i,
+  /^advertisement/i,
+  /^image:/i,
+  /^photo:/i,
+  /^©/,
+  /^all rights reserved/i,
+  /^this (article|story) (is|was)/i,
+  /^the (associated press|ap|reuters|afp)/i,
+  /^\(reuters\)/i,
+  /^\(ap\)/i,
+];
+
+function isBoilerplate(s) {
+  return BOILERPLATE_PATTERNS.some(re => re.test(s));
+}
+
+// Score: rewards info density (numbers, named entities) and length sweet-spot.
+function scoreSentence(s) {
+  let score = 0;
+  // Length sweet spot: 60-110 chars reads cleanly on a 1080×1920 slide.
+  const len = s.length;
+  if (len >= 60 && len <= 110) score += 4;
+  else if (len >= 50 && len <= 130) score += 2;
+  else if (len < 30 || len > 160) return -10;
+  // Numbers / stats are concrete and visually scannable.
+  if (/\b\d/.test(s)) score += 2;
+  if (/\b\d+(?:[.,]\d+)?\s?(?:%|percent|million|billion|thousand|m|bn|k)\b/i.test(s)) score += 3;
+  // Named entities (proper nouns) → higher information density.
+  const properNouns = (s.match(/\b[A-Z][a-z]+/g) || []).length;
+  if (properNouns >= 2) score += 2;
+  // Penalize sentences that start with pronouns — usually need preceding context.
+  if (/^(it|he|she|they|this|that|these|those)\b/i.test(s)) score -= 2;
+  // Penalize attribution-only sentences ("said John Smith.")
+  if (/^(said|added|noted|told|wrote|tweeted|posted)\b/i.test(s)) score -= 4;
+  // Penalize question-only ("Why does this matter?") — better for headers, not bullets.
+  if (s.endsWith("?") && len < 60) score -= 1;
+  return score;
+}
+
+// Light dedup: don't pick two sentences that share a >5-word ngram.
+function tooSimilar(a, b) {
+  const wordsA = a.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+  const wordsB = b.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+  const setB = new Set(wordsB);
+  let overlap = 0;
+  for (const w of wordsA) if (setB.has(w)) overlap++;
+  // 60%+ word overlap = effectively the same point.
+  return overlap >= Math.min(wordsA.length, wordsB.length) * 0.6;
+}
+
 export function extractBullets(article) {
-  const text = String(article.content || article.description || article.title || "");
-  const sentences = text
+  const raw = String(article.content || article.description || article.title || "");
+  // Strip HTML tags, normalise whitespace, drop common dateline patterns
+  // ("WASHINGTON, April 26 (Reuters) - ...").
+  const text = raw
+    .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
-    .split(/[.!?]+/)
-    .map(s => s.trim())
-    .filter(s => s.length >= 30 && s.length <= 140);
-  const out = sentences.slice(0, 3);
-  while (out.length < 3) out.push(out[out.length - 1] || article.title || "");
-  return out.slice(0, 3).map(s => s.length > 110 ? s.slice(0, 107) + "…" : s);
+    .replace(/^[A-Z][A-Z\s,]+\d+\s*\([^)]+\)\s*[-—–]\s*/, "")
+    .trim();
+
+  const titleLower = (article.title || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+  const candidates = text
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map(s => s.trim().replace(/^[-—–•·]\s*/, ""))
+    .filter(s => s.length >= 30 && s.length <= 220 && !isBoilerplate(s))
+    // Don't echo the title back as a bullet.
+    .filter(s => s.toLowerCase().replace(/\s+/g, " ").trim() !== titleLower)
+    .map(s => ({ s, score: scoreSentence(s) }))
+    .filter(c => c.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const picked = [];
+  for (const c of candidates) {
+    if (picked.some(p => tooSimilar(p, c.s))) continue;
+    picked.push(c.s);
+    if (picked.length === 3) break;
+  }
+
+  // Fallbacks if scoring didn't yield 3 — top up with whatever sentences we have.
+  if (picked.length < 3) {
+    const fallback = text
+      .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+      .map(s => s.trim())
+      .filter(s => s.length >= 30 && s.length <= 220 && !picked.includes(s));
+    while (picked.length < 3 && fallback.length > 0) picked.push(fallback.shift());
+  }
+  while (picked.length < 3) picked.push(article.title || "Read more at scoopfeeds.com");
+
+  // Trim to readable length on a slide (110 chars max with ellipsis).
+  return picked.slice(0, 3).map(s => {
+    const clean = s.replace(/\s+/g, " ").trim();
+    return clean.length > 110 ? clean.slice(0, 107) + "…" : clean;
+  });
 }
 
 // ─── Satori slide renderers ──────────────────────────────────────────────────
 const W = 1080, H = 1920;
+
+// Build a subtle radial gradient background — pulls the category accent
+// up from the bottom-left into the dark slate field. Reads as "premium"
+// vs the original flat slate-900, costs nothing to render.
+function gradientBg(accent) {
+  // Convert #RRGGBB → rgba with alpha so satori CSS engine accepts it.
+  const hex = (accent || "#2563EB").replace("#", "");
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return (
+    `radial-gradient(circle at 20% 100%, rgba(${r},${g},${b},0.35) 0%, ` +
+    `rgba(${r},${g},${b},0.1) 35%, #0f172a 70%)`
+  );
+}
 
 function slideContainer(bg, children) {
   return {
@@ -167,7 +275,7 @@ function slide1(article) {
   const title = article.title || "";
   const src   = article.source_name || "Scoop";
 
-  return slideContainer("#0f172a", [
+  return slideContainer(gradientBg(color), [
     // Top category ribbon
     {
       type: "div",
@@ -181,24 +289,37 @@ function slide1(article) {
         children: [{ type: "span", props: { children: label } }],
       },
     },
-    // Headline
+    // Headline + accent line
     {
       type: "div",
       props: {
         style: {
-          display: "flex", flex: 1, alignItems: "center", justifyContent: "center",
-          padding: "60px 80px",
+          display: "flex", flex: 1, flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "60px 80px", gap: 36,
         },
-        children: [{
-          type: "span",
-          props: {
-            style: {
-              fontSize: 72, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.25,
-              textAlign: "center", fontFamily: "Inter",
+        children: [
+          {
+            type: "span",
+            props: {
+              style: {
+                fontSize: 72, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.25,
+                textAlign: "center", fontFamily: "Inter",
+              },
+              children: title,
             },
-            children: title,
           },
-        }],
+          {
+            type: "div",
+            props: {
+              style: {
+                display: "flex",
+                width: 140, height: 6, background: color, borderRadius: 3,
+              },
+              children: [],
+            },
+          },
+        ],
       },
     },
     // Source badge
@@ -251,7 +372,7 @@ function slide1(article) {
 
 // Slides 2–4 — Key points
 function slidePoint(num, text, color) {
-  return slideContainer("#0f172a", [
+  return slideContainer(gradientBg(color), [
     // Number badge
     {
       type: "div",
@@ -436,6 +557,68 @@ async function runFFmpeg(args, ffmpegPath) {
   });
 }
 
+// Crossfade duration between slides — short enough to feel snappy on Shorts/
+// TikTok but long enough that the transition reads on first watch. 0.4s is a
+// well-tested sweet spot for vertical news content.
+const XFADE_DURATION = 0.4;
+
+// Build a filter_complex that scales each slide then chains xfade transitions
+// between them. The math is fiddly because xfade's `offset` is measured from
+// the *combined* timeline of all preceding clips (already including their
+// xfade overlaps), not from the start of clip N. See:
+//   https://ffmpeg.org/ffmpeg-filters.html#xfade
+function buildSlideshowFilter(slidePaths, durations) {
+  const n = slidePaths.length;
+  const parts = [];
+
+  // 1. Scale each slide to canonical 1080×1920 + sane SAR.
+  for (let i = 0; i < n; i++) {
+    parts.push(
+      `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
+      `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=#0f172a,setsar=1,` +
+      `format=yuv420p,fps=25[s${i}]`
+    );
+  }
+
+  // 2. Chain xfades. For slide 0+1 with durations d0,d1 the offset is
+  //    (d0 - XFADE). For each subsequent xfade the offset is the cumulative
+  //    output length minus XFADE.
+  if (n === 1) {
+    parts.push(`[s0]copy[out]`);
+    return { filter: parts.join("; "), totalDuration: durations[0] };
+  }
+
+  // First xfade: s0 → s1
+  let offset = durations[0] - XFADE_DURATION;
+  parts.push(
+    `[s0][s1]xfade=transition=fade:duration=${XFADE_DURATION}:` +
+    `offset=${offset.toFixed(3)}[xf1]`
+  );
+
+  // Cumulative output duration after the first xfade: d0 + d1 - XFADE
+  let cumulative = durations[0] + durations[1] - XFADE_DURATION;
+
+  // Subsequent xfades chain off the previous xfade output.
+  for (let i = 2; i < n; i++) {
+    const prev = `xf${i - 1}`;
+    const curr = i === n - 1 ? "out" : `xf${i}`;
+    offset = cumulative - XFADE_DURATION;
+    parts.push(
+      `[${prev}][s${i}]xfade=transition=fade:duration=${XFADE_DURATION}:` +
+      `offset=${offset.toFixed(3)}[${curr}]`
+    );
+    cumulative += durations[i] - XFADE_DURATION;
+  }
+
+  // If only 2 slides, the first xfade was already labelled [xf1] but we want [out].
+  if (n === 2) {
+    // Replace the label of the only xfade.
+    parts[parts.length - 1] = parts[parts.length - 1].replace("[xf1]", "[out]");
+  }
+
+  return { filter: parts.join("; "), totalDuration: cumulative };
+}
+
 async function composeVideo(slidePaths, audioPath, outputPath, ffmpegPath) {
   const args = ["-y", "-loglevel", "warning"];
 
@@ -448,27 +631,15 @@ async function composeVideo(slidePaths, audioPath, outputPath, ffmpegPath) {
   const hasAudio = audioPath && existsSync(audioPath);
   if (hasAudio) args.push("-i", audioPath);
 
-  // filter_complex: scale each image then concat
-  const totalSlides = slidePaths.length;
-  const filterParts = [];
-  for (let i = 0; i < totalSlides; i++) {
-    filterParts.push(
-      `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-      `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=#0f172a,setsar=1[s${i}]`
-    );
-  }
-  const concatInputs = slidePaths.map((_, i) => `[s${i}]`).join("");
-  filterParts.push(`${concatInputs}concat=n=${totalSlides}:v=1:a=0[out]`);
-
-  args.push("-filter_complex", filterParts.join("; "));
+  const { filter, totalDuration } = buildSlideshowFilter(slidePaths, SLIDE_DURATIONS);
+  args.push("-filter_complex", filter);
   args.push("-map", "[out]");
   if (hasAudio) {
-    args.push("-map", `${totalSlides}:a`);
+    args.push("-map", `${slidePaths.length}:a`);
   }
 
-  const totalDuration = SLIDE_DURATIONS.reduce((a, b) => a + b, 0);
   args.push(
-    "-t",        String(totalDuration),
+    "-t",        totalDuration.toFixed(3),
     "-c:v",      "libx264",
     "-preset",   "fast",
     "-crf",      "23",
@@ -484,6 +655,7 @@ async function composeVideo(slidePaths, audioPath, outputPath, ffmpegPath) {
 
   args.push(outputPath);
   await runFFmpeg(args, ffmpegPath);
+  return totalDuration;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -550,8 +722,9 @@ export async function generateVideo(article) {
 
   // 3. Compose video with ffmpeg
   const composeStart = Date.now();
+  let actualDuration = SLIDE_DURATIONS.reduce((a, b) => a + b, 0);
   try {
-    await composeVideo(slideFiles, audioPath, outputPath, ffmpegPath);
+    actualDuration = await composeVideo(slideFiles, audioPath, outputPath, ffmpegPath) || actualDuration;
     logger.info(`videoGenerator: rendered "${article.title?.slice(0, 60)}" in ${Date.now() - composeStart}ms → ${outputPath}`);
   } catch (err) {
     logger.error(`videoGenerator: ffmpeg failed for ${id}: ${err.message}`);
@@ -563,8 +736,12 @@ export async function generateVideo(article) {
     }
   }
 
-  const durationSecs = SLIDE_DURATIONS.reduce((a, b) => a + b, 0);
-  return { outputPath, durationSecs, hasAudio: Boolean(audioPath), slideCount: slideFiles.length };
+  return {
+    outputPath,
+    durationSecs: Math.round(actualDuration * 10) / 10,
+    hasAudio: Boolean(audioPath),
+    slideCount: slideFiles.length,
+  };
 }
 
 // ─── Recap video pipeline ────────────────────────────────────────────────────
@@ -576,7 +753,7 @@ const RECAP_SLIDE_DURATIONS = [5, 10, 10, 10, 10, 10, 5]; // intro + 5 items + o
 
 // Intro slide — "Top 5 stories" + date, branded. 5s.
 function slideRecapIntro(label, dateStr, accent = "#DC2626") {
-  return slideContainer("#0f172a", [
+  return slideContainer(gradientBg(accent), [
     {
       type: "div",
       props: {
@@ -632,7 +809,7 @@ function slideRecapItem(num, article, accent = "#DC2626") {
   const title = (article.title || "").slice(0, 160);
   const src   = article.source_name || "";
 
-  return slideContainer("#0f172a", [
+  return slideContainer(gradientBg(color), [
     // Top: big number + category ribbon
     {
       type: "div",
@@ -814,10 +991,11 @@ export async function generateRecapVideo({ articles, label, slug, accent = "#DC2
 
   // 4. Compose the recap with the recap-specific durations.
   const composeStart = Date.now();
+  let actualDuration = RECAP_SLIDE_DURATIONS.reduce((a, b) => a + b, 0);
   try {
-    await composeVideoWithDurations(
+    actualDuration = await composeVideoWithDurations(
       slideFiles, RECAP_SLIDE_DURATIONS, audioPath, outputPath, ffmpegPath
-    );
+    ) || actualDuration;
     logger.info(`videoGenerator (recap): "${label}" rendered in ${Date.now() - composeStart}ms → ${outputPath}`);
   } catch (err) {
     logger.error(`videoGenerator (recap): ffmpeg failed: ${err.message}`);
@@ -826,12 +1004,18 @@ export async function generateRecapVideo({ articles, label, slug, accent = "#DC2
     for (const f of slideFiles) { try { unlinkSync(f); } catch {} }
   }
 
-  const durationSecs = RECAP_SLIDE_DURATIONS.reduce((a, b) => a + b, 0);
-  return { outputPath, durationSecs, hasAudio: Boolean(audioPath), slideCount: slideFiles.length };
+  return {
+    outputPath,
+    durationSecs: Math.round(actualDuration * 10) / 10,
+    hasAudio: Boolean(audioPath),
+    slideCount: slideFiles.length,
+  };
 }
 
 // Variant of composeVideo that accepts a per-slide durations array. Lets the
 // recap pipeline use slide-specific timings without forking the whole composer.
+// Uses the same xfade chaining as composeVideo so transitions are consistent
+// across single-article shorts, recaps, and live-event videos.
 async function composeVideoWithDurations(slidePaths, durations, audioPath, outputPath, ffmpegPath) {
   const args = ["-y", "-loglevel", "warning"];
   for (let i = 0; i < slidePaths.length; i++) {
@@ -840,24 +1024,13 @@ async function composeVideoWithDurations(slidePaths, durations, audioPath, outpu
   const hasAudio = audioPath && existsSync(audioPath);
   if (hasAudio) args.push("-i", audioPath);
 
-  const totalSlides = slidePaths.length;
-  const filterParts = [];
-  for (let i = 0; i < totalSlides; i++) {
-    filterParts.push(
-      `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-      `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=#0f172a,setsar=1[s${i}]`
-    );
-  }
-  const concatInputs = slidePaths.map((_, i) => `[s${i}]`).join("");
-  filterParts.push(`${concatInputs}concat=n=${totalSlides}:v=1:a=0[out]`);
-
-  args.push("-filter_complex", filterParts.join("; "));
+  const { filter, totalDuration } = buildSlideshowFilter(slidePaths, durations);
+  args.push("-filter_complex", filter);
   args.push("-map", "[out]");
-  if (hasAudio) args.push("-map", `${totalSlides}:a`);
+  if (hasAudio) args.push("-map", `${slidePaths.length}:a`);
 
-  const totalDuration = durations.reduce((a, b) => a + b, 0);
   args.push(
-    "-t",        String(totalDuration),
+    "-t",        totalDuration.toFixed(3),
     "-c:v",      "libx264",
     "-preset",   "fast",
     "-crf",      "23",
@@ -869,6 +1042,7 @@ async function composeVideoWithDurations(slidePaths, durations, audioPath, outpu
   else          args.push("-an");
   args.push(outputPath);
   await runFFmpeg(args, ffmpegPath);
+  return totalDuration;
 }
 
 // ─── Live-event video pipeline ───────────────────────────────────────────────
@@ -885,7 +1059,7 @@ function slideLiveIntro(event) {
   const accent = "#DC2626"; // brand red
   const label  = (event.title || "Live event").slice(0, 80);
   const sub    = (event.subtitle || event.region || "").slice(0, 60);
-  return slideContainer("#0f172a", [
+  return slideContainer(gradientBg(accent), [
     {
       type: "div",
       props: {
@@ -960,7 +1134,7 @@ function slideLivePoint(num, point) {
   const when = ts ? new Date(ts).toLocaleString("en-US", {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true,
   }) : "";
-  return slideContainer("#0f172a", [
+  return slideContainer(gradientBg("#DC2626"), [
     {
       type: "div",
       props: {
@@ -1034,7 +1208,7 @@ function slideLivePoint(num, point) {
 }
 
 // Metrics tile slide — up to 3 key metrics from the dossier.
-function slideLiveMetrics(metrics = {}) {
+function slideLiveMetrics(metrics = {}, accent = "#DC2626") {
   const entries = Object.entries(metrics).slice(0, 3);
   const tiles = entries.map(([key, m]) => {
     const value = m?.value != null ? String(m.value) : "—";
@@ -1077,7 +1251,7 @@ function slideLiveMetrics(metrics = {}) {
     };
   });
 
-  return slideContainer("#0f172a", [
+  return slideContainer(gradientBg(accent), [
     {
       type: "div",
       props: {
@@ -1192,10 +1366,11 @@ export async function generateLiveEventVideo(event, opts = {}) {
   }
 
   const composeStart = Date.now();
+  let actualDuration = LIVE_EVENT_DURATIONS.reduce((a, b) => a + b, 0);
   try {
-    await composeVideoWithDurations(
+    actualDuration = await composeVideoWithDurations(
       slideFiles, LIVE_EVENT_DURATIONS, audioPath, outputPath, ffmpegPath
-    );
+    ) || actualDuration;
     logger.info(`videoGenerator (live): "${event.title}" rendered in ${Date.now() - composeStart}ms → ${outputPath}`);
   } catch (err) {
     logger.error(`videoGenerator (live): ffmpeg failed: ${err.message}`);
@@ -1204,8 +1379,12 @@ export async function generateLiveEventVideo(event, opts = {}) {
     for (const f of slideFiles) { try { unlinkSync(f); } catch {} }
   }
 
-  const durationSecs = LIVE_EVENT_DURATIONS.reduce((a, b) => a + b, 0);
-  return { outputPath, durationSecs, hasAudio: Boolean(audioPath), slideCount: slideFiles.length };
+  return {
+    outputPath,
+    durationSecs: Math.round(actualDuration * 10) / 10,
+    hasAudio: Boolean(audioPath),
+    slideCount: slideFiles.length,
+  };
 }
 
 /**
