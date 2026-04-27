@@ -52,15 +52,31 @@ function utmUrl(articleId, network) {
 // can render character budgets and spot overflows at a glance.
 
 function composeX(article) {
-  // X: 280 chars hard cap. Budget: ~30 chars for the URL + hashtags, leaves
-  // ~250 for the headline + emoji. We include the URL so posts auto-unfurl.
+  // X: 280 chars hard cap. URL counts as 23 chars (t.co shortener) regardless
+  // of actual length, but we count actual length to be safe — leaves a tiny
+  // buffer for unicode emoji widening. We include the URL so posts auto-unfurl
+  // into the article card.
   const url = utmUrl(article.id, "x");
   const emoji = CATEGORY_EMOJI[article.category] || "📰";
   const hashtags = [...(CATEGORY_HASHTAGS[article.category] || []), BRAND_HASHTAG].slice(0, 3);
   const tail = `\n\n${url}\n${hashtags.join(" ")}`;
-  const headroom = 280 - tail.length - 2; // -2 for the leading emoji + space
-  const headline = truncate(article.title, headroom);
-  const caption = `${emoji} ${headline}${tail}`;
+  const head = `${emoji} ${article.title}`;
+
+  // If the headline alone is short enough, try to add a 1-line description
+  // preview so the tweet reads as more than a bare link drop. Tweets that
+  // bundle headline + tease tend to outperform raw headlines on engagement.
+  const baseLen = head.length + tail.length;
+  const descBudget = 280 - baseLen - 2; // -2 for the "\n\n" separator
+  let body = head;
+  if (descBudget >= 50 && article.description) {
+    const desc = truncate(article.description, descBudget);
+    if (desc && desc.length >= 30) body = `${head}\n\n${desc}`;
+  } else if (head.length > 280 - tail.length) {
+    // Headline alone is too long — truncate it.
+    body = truncate(head, 280 - tail.length);
+  }
+
+  const caption = `${body}${tail}`;
   return { caption, url, characterCount: caption.length };
 }
 
@@ -80,39 +96,76 @@ function composeThreads(article) {
 
 function composeFacebook(article) {
   // Facebook: ~63k char technical limit but engagement drops past ~200 chars.
-  // Best shape: headline line → synthesis paragraph → link. FB auto-previews
-  // the link so we can lean on description + source + CTA.
+  // Best shape: emoji + headline → synthesis paragraph → "Read more" CTA + link
+  // → 2 hashtags. FB auto-previews the link so we can lean on description +
+  // source + CTA. Description budget bumped to 320 chars — FB tolerates more
+  // text under the headline than X without engagement penalty, and longer
+  // captions correlate with higher comment rates on news content.
   const url = utmUrl(article.id, "facebook");
   const emoji = CATEGORY_EMOJI[article.category] || "📰";
   const hashtags = (CATEGORY_HASHTAGS[article.category] || []).slice(0, 2);
-  const desc = truncate(article.description || "", 260);
-  const src = article.source_name ? `Via ${article.source_name} · ` : "";
+  const desc = truncate(article.description || "", 320);
+  const cta = article.source_name
+    ? `📖 Read more (${article.source_name}): ${url}`
+    : `📖 Read more: ${url}`;
   const parts = [
     `${emoji} ${article.title}`,
     desc || null,
-    `${src}${url}`,
+    cta,
     hashtags.length ? hashtags.join(" ") : null,
   ].filter(Boolean);
   const caption = parts.join("\n\n");
   return { caption, url, characterCount: caption.length };
 }
 
+// Category-keyed hook lines for LinkedIn. The first 1-2 lines of a LinkedIn
+// post are the only thing visible above the "...see more" fold, so leading
+// with a curiosity-pitch instead of a bare headline meaningfully lifts
+// expand-rate. These are intentionally short (≤ ~50 chars) and category-
+// relevant so they don't read as templated.
+const LINKEDIN_HOOKS = {
+  top:           "Today's top story 👇",
+  politics:      "Worth tracking 👇",
+  pakistan:      "From Pakistan 👇",
+  international: "On the global desk 👇",
+  science:       "New research worth knowing 👇",
+  medicine:      "Healthcare update 👇",
+  "public-health": "Public health watch 👇",
+  health:        "Health & wellness 👇",
+  environment:   "Climate desk 👇",
+  "self-help":   "For the personal-growth crowd 👇",
+  sports:        "Sports update 👇",
+  cars:          "Auto industry move 👇",
+  ai:            "AI watch 👇",
+};
+
 function composeLinkedIn(article) {
-  // LinkedIn: longer analytical framing reads better. 3000-char limit but
-  // engagement peaks around 1500. Lead with a hook, then context, then link.
+  // LinkedIn: 3000 char hard cap, engagement peaks around 1300-1500 chars.
+  // Successful structure for B2B news posts:
+  //   Line 1 — curiosity hook (above-fold)
+  //   Line 2 — title in TITLE CASE for emphasis (LI strips markdown)
+  //   Para  — analytical context (description)
+  //   Line  — source attribution + clickable URL
+  //   Line  — 4 hashtags max (more reads as spam on LI)
   const url = utmUrl(article.id, "linkedin");
-  const hashtags = [...(CATEGORY_HASHTAGS[article.category] || []), BRAND_HASHTAG].slice(0, 4)
-    .map((h) => h.replace(/^#/, "#")); // already hashtag-formed
-  const hook = article.title;
-  const body = article.description || "";
-  const src = article.source_name || "the source";
+  const hashtags = [...(CATEGORY_HASHTAGS[article.category] || []), BRAND_HASHTAG].slice(0, 4);
+
+  const hook  = LINKEDIN_HOOKS[article.category] || "Worth a read 👇";
+  const title = String(article.title || "").trim();
+  const body  = String(article.description || "").trim();
+  const src   = article.source_name || "the source";
+
   const parts = [
     hook,
-    body,
-    `Full context from ${src}: ${url}`,
+    title,
+    body || null,
+    `📍 Full reporting from ${src}: ${url}`,
     hashtags.length ? hashtags.join(" ") : null,
   ].filter(Boolean);
-  const caption = parts.join("\n\n");
+
+  let caption = parts.join("\n\n");
+  // Hard 3000ch cap — extremely unlikely to hit, but truncate the body if so.
+  if (caption.length > 3000) caption = truncate(caption, 3000);
   return { caption, url, characterCount: caption.length };
 }
 
