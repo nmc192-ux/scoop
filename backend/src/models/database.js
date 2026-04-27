@@ -5,7 +5,16 @@ import fs from "fs";
 import { logger } from "../services/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.join(__dirname, "../../data");
+
+// DB directory. Defaults to backend/data/ for local dev, but can be
+// overridden via SCOOP_PERSISTENT_DATA_DIR so the database survives
+// Hostinger redeploys that wipe untracked files via `git clean -fd`.
+// Point SCOOP_PERSISTENT_DATA_DIR at a path OUTSIDE the deploy directory
+// (e.g. ~/.scoopfeeds-data) and the DB — including social_posts, articles,
+// and all other tables — will persist across every deploy.
+const dataDir = process.env.SCOOP_PERSISTENT_DATA_DIR
+  ? path.resolve(process.env.SCOOP_PERSISTENT_DATA_DIR)
+  : path.join(__dirname, "../../data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
 const DB_PATH = path.join(dataDir, "news.db");

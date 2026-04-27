@@ -47,10 +47,22 @@ After the fix, `start.js` reads env vars from three sources in this order:
 
 For ANY credential that needs to survive a redeploy, use option 1 or 3.
 
-Same pattern applies to disk-cached tokens (Bluesky session, Facebook page
-token). Set `SCOOP_PERSISTENT_DATA_DIR=/home/youruser/.scoopfeeds-data`
-and the social clients write their cache files there instead of
-`backend/data/`. That dir survives deploys.
+Same pattern applies to **all persistent data** — the SQLite database,
+disk-cached tokens (Bluesky session, Facebook page token), and video assets.
+Set `SCOOP_PERSISTENT_DATA_DIR=/home/youruser/.scoopfeeds-data` and ALL
+of these files move there, outside the deploy directory:
+
+| File | What it contains | Effect if wiped |
+|------|-----------------|-----------------|
+| `news.db` | articles, social_posts, push subs, … | duplicate social posts, lost subscribers |
+| `bluesky-session.json` | Bluesky refresh token | forced re-login, risks 429 rate-limit |
+| `bluesky-cooldown.json` | 429 circuit-breaker state | 429 storm restarts after each deploy |
+| `facebook-token.json` | Facebook page token | Facebook posts stop |
+
+Without `SCOOP_PERSISTENT_DATA_DIR`, every redeploy wipes all of these.
+The duplicate posts on Bluesky you see after a deploy are caused by the
+`social_posts` table being lost — the dedup logic works, but has nothing
+to check against. That dir survives deploys.
 
 ## Recommended setup on Hostinger
 
