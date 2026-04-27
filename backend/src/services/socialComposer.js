@@ -147,12 +147,38 @@ function composePinterest(article) {
 }
 
 function composeBluesky(article) {
-  // Bluesky: 300 chars. Similar shape to X.
+  // Bluesky: 300 grapheme limit. Bluesky also accepts an external embed
+  // (set in blueskyClient via thumb + externalUrl), so we don't need to
+  // include the URL in the text — that doubles up with the link card and
+  // looks cluttered. Instead spend the budget on a description preview +
+  // source attribution + 1 hashtag, which actually reads like a real post.
   const url = utmUrl(article.id, "bluesky");
   const emoji = CATEGORY_EMOJI[article.category] || "📰";
-  const tail = `\n${url}`;
-  const headroom = 300 - tail.length - 2;
-  const caption = `${emoji} ${truncate(article.title, headroom)}${tail}`;
+  const src = article.source_name ? `Via ${article.source_name}` : "";
+  const hashtag = (CATEGORY_HASHTAGS[article.category] || [])[0] || "";
+
+  // Tail = source line + optional hashtag. Reserve room for it before the
+  // description gets a budget.
+  const tailParts = [src, hashtag].filter(Boolean);
+  const tail = tailParts.length ? `\n\n${tailParts.join(" · ")}` : "";
+
+  const head = `${emoji} ${article.title}`;
+  const headHasRoom = head.length + tail.length;
+  const descBudget = 300 - headHasRoom - 4; // -4 for "\n\n" between head + desc
+
+  // If the headline alone is already at-budget (long title), skip the
+  // description and just send headline + tail.
+  let body = head;
+  if (descBudget > 60 && article.description) {
+    const desc = truncate(article.description, descBudget);
+    if (desc) body = `${head}\n\n${desc}`;
+  }
+
+  let caption = `${body}${tail}`;
+  // Final safety check — Bluesky counts graphemes, not chars; we're conservative
+  // by counting chars. If we're over, lop the tail.
+  if (caption.length > 300) caption = truncate(caption, 300);
+
   return { caption, url, characterCount: caption.length };
 }
 
