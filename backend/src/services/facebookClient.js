@@ -37,7 +37,16 @@ import { logger } from "./logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = path.resolve(__dirname, "../..");
-const TOKEN_PATH = path.join(BACKEND_ROOT, "data", "facebook-token.json");
+
+// Token cache directory. Defaults to backend/data/, but can be overridden
+// via SCOOP_PERSISTENT_DATA_DIR — point that at a path OUTSIDE the deploy
+// directory (e.g. ~/.scoopfeeds-data) so the cached page token survives
+// Hostinger redeploys that wipe untracked files. See backend/start.js for
+// the matching env-file persistence pattern.
+const PERSIST_DIR = process.env.SCOOP_PERSISTENT_DATA_DIR
+  ? path.resolve(process.env.SCOOP_PERSISTENT_DATA_DIR)
+  : path.join(BACKEND_ROOT, "data");
+const TOKEN_PATH = path.join(PERSIST_DIR, "facebook-token.json");
 
 const API_BASE = "https://graph.facebook.com/v19.0";
 

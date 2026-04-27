@@ -18,8 +18,17 @@ import { logger } from "./logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = path.resolve(__dirname, "../..");
-const SESSION_PATH = path.join(BACKEND_ROOT, "data", "bluesky-session.json");
-const COOLDOWN_PATH = path.join(BACKEND_ROOT, "data", "bluesky-cooldown.json");
+
+// Token cache directory. Defaults to backend/data/, but can be overridden
+// via SCOOP_PERSISTENT_DATA_DIR — point that at a path OUTSIDE the deploy
+// directory (e.g. ~/.scoopfeeds-data) so the cached session survives
+// Hostinger redeploys that wipe untracked files. Without this, every
+// redeploy forces a fresh createSession against Bluesky's 30/5min limit.
+const PERSIST_DIR = process.env.SCOOP_PERSISTENT_DATA_DIR
+  ? path.resolve(process.env.SCOOP_PERSISTENT_DATA_DIR)
+  : path.join(BACKEND_ROOT, "data");
+const SESSION_PATH  = path.join(PERSIST_DIR, "bluesky-session.json");
+const COOLDOWN_PATH = path.join(PERSIST_DIR, "bluesky-cooldown.json");
 
 // Circuit-breaker: when createSession hits 429, persist a "do not try
 // before" timestamp so subsequent cron ticks skip the call entirely. This
